@@ -116,6 +116,14 @@ func (cm *CephMount) tarifyBfs(rootPath string, tarW *tar.Writer) error {
 		return fmt.Errorf("tar writer is nil")
 	}
 
+	type tarIndex struct {
+		offset uint64
+		size   uint64
+		path   string
+	}
+	
+	var tarIndexArr []tarIndex;
+
 	var walk func(string) error
 	walk = func(currentPath string) error {
 		println("rec call")
@@ -142,6 +150,7 @@ func (cm *CephMount) tarifyBfs(rootPath string, tarW *tar.Writer) error {
 			if entry.Name() == "." || entry.Name() == ".."{
 				continue
 			}
+
 			childPath := path.Join(currentPath, entry.Name())
 			println("childPath: ", childPath)
 
@@ -191,6 +200,11 @@ func (cm *CephMount) tarifyBfs(rootPath string, tarW *tar.Writer) error {
 				file.Close()
 				return fmt.Errorf("write file header for %q: %w", childPath, err)
 			}
+			tarIndexArr = append(tarIndexArr, tarIndex{
+				offset: 0,
+				size:   uint64(attrs.Size),
+				path:   childPath,
+			})
 			file.Seek(0,io.SeekStart)
 
 			if btsWrtn, err := io.CopyN(tarW, file, int64(attrs.Size)); err != nil {

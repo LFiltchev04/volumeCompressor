@@ -1,8 +1,6 @@
 package Api
 
 import (
-	"compressor/CephStorage"
-	"compressor/Configuration"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,6 +10,9 @@ import (
 	"strings"
 
 	"github.com/gorilla/mux"
+
+	"compressor/CephStorage"
+	"compressor/Configuration"
 )
 
 func doTest(resp http.ResponseWriter, req *http.Request){
@@ -260,6 +261,7 @@ func doMakeEnv(resp http.ResponseWriter, req *http.Request){
 		return
 	}
 	
+	//simple symlink to get the other dirs to show up in alt repos
 
 	resp.WriteHeader(200)
 	resp.Write([]byte("Environment created successfully"))
