@@ -23,7 +23,7 @@ func (cm *CephMount) AdvanceTag(tagName string, envName string ,manifest *v1.Man
 
 	revisionn, _ := digest.Parse(stringCast)
 
-	relPath, _ := PathFor(manifestTagIndexEntryPathSpec{
+	relPath, _ := PathFor(manifestTagIndexEntryLinkPathSpec{
 		name: envName,
 		tag: tagName,
 		revision: revisionn,
@@ -36,16 +36,33 @@ func (cm *CephMount) AdvanceTag(tagName string, envName string ,manifest *v1.Man
 		return err
 	}
 
-	_, err = file.Write(jsonMfst)
+	_, err = file.Write(revisionHash[:])
 	if err != nil {
 		return err
 	}
 	file.Close()
 
-
+	//ensures the manifest blob is written
+	cm.WriteBlob(&jsonMfst)
+	
+	
 	//sets the topmost file pointer to this thing
+	
+	latestLinkPath, _ := PathFor(manifestTagIndexEntryLinkPathSpec{
+		name: envName,
+		tag: tagName,
+		revision: revisionn,
+	})
 
+	fullLatestLinkPath := rootP + "/" + latestLinkPath
 
-
+	fileL, err := cm.CephMount.Open(fullLatestLinkPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	_, err = fileL.Write(jsonMfst)
+	if err != nil {
+		defer fileL.Close()
+		return err
+	}
+	
+	defer fileL.Close()
 	return nil
 }

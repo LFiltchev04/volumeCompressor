@@ -10,7 +10,7 @@ import (
 
 )
 
-//writes a blob entry and links it independently
+//writes a blob entry and links it independently, not recomended to stream bulk data from here
 func (cm *CephMount) WriteBlob(data *[]byte) error {
 	basePath := Configuration.Global.BaseConf.DistributionPV
 	
@@ -36,11 +36,31 @@ func (cm *CephMount) WriteBlob(data *[]byte) error {
 		return err
 	}
 
+	defer file.Close()
+
 
 	//this is only for the linkfile to go with the blobs
 
-	
+	linkFilePath, _ := PathFor(layerLinkPathSpec{
+		name: "linkEXT", //i dont know why this exists, it is never asked for
+		digest: dgst,
+	})
+	println("security check on the name stuff, the unknown nameEXT property is set here, the full path was: ", linkFilePath)
+	fullLinkfilePath := basePath + "/" + linkFilePath
 
-	defer file.Close()
+
+	fileL, err := cm.CephMount.Open(fullLinkfilePath, os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		defer fileL.Close()
+		return err
+	}
+
+	_, err = fileL.Write([]byte{})
+	if err != nil {
+		defer fileL.Close()
+		return err
+	}
+
+	defer fileL.Close()
 	return nil
 }
