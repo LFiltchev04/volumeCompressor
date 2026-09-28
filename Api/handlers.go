@@ -1,14 +1,15 @@
 package Api
 
 import (
-	"compressor/CephStorage"
-	"compressor/Configuration"
 	"encoding/json"
 	"io"
 	"net/http"
 	"os"
 
 	"github.com/gorilla/mux"
+
+	"compressor/CephStorage"
+	"compressor/Configuration"
 )
 
 func doTest(resp http.ResponseWriter, req *http.Request){
@@ -44,8 +45,8 @@ func doTest(resp http.ResponseWriter, req *http.Request){
 
 	println("derived arch file: ", archFile)
 
-	var cMnt CephStorage.CephMount
-	cMnt.CephMount = &Configuration.Global.GlobalMnt
+	//var cMnt CephStorage.CephMount
+	//cMnt.CephMount = &Configuration.Global.GlobalMnt
 
 	//hashPath := "/volumes/csi/csi-vol-3dbb4382-b70b-472d-9e7c-c31c9815841c/5030be57-07d6-4daa-ae31-13fae5206f5a/arch"
 	//cMnt.HardlinkBlob(hashPath,"rpo")

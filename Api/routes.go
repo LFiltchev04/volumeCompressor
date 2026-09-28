@@ -9,6 +9,8 @@ func Listener() {
 	mux.HandleFunc("/test", doTest)
 	mux.HandleFunc("/snapshotState", doSnapshot)
 	mux.HandleFunc("POST /repoPush", doDistribution)
+
+	//mux.HandleFunc("POST /advanceTag", doTagAdv)
 	//mux.HandleFunc("POST /makeSubenv", doMakeEnv)
 	
 	//mux.HandleFunc("/healthz/{service:[a-zA-Z0-9.-]+}", doHealthz)
