@@ -67,7 +67,7 @@ func tarTypeFlag(mode uint16) (byte, error) {
 	}
 }
 
-func (cm *CephMount) CompressSubvolume(subvolPath string, username string) error {
+func (cm *CephMount) CompressSubvolume(subvolPath string, username string, dumpName string) error {
 	workplaceMount := path.Dir(subvolPath)
 
 	archvDir := path.Join(subvolPath, "arch")
@@ -80,8 +80,6 @@ func (cm *CephMount) CompressSubvolume(subvolPath string, username string) error
 	writer, errWrite := cm.CephWrite(tarPath)
 	var countingWriter = countingWriter{writer: writer, c: 0}
 
-
-
 	println("In compress, values are: ", subvolPath, workplaceMount)
 	if errWrite != nil {
 		println("cephWrite error: ", errWrite.Error())
@@ -92,11 +90,16 @@ func (cm *CephMount) CompressSubvolume(subvolPath string, username string) error
 	
 	wrt := tar.NewWriter(&countingWriter)
 	
-	err := cm.tarifyBfs(subvolPath, wrt)
+	idxArr, err := cm.tarifyBfs(subvolPath, wrt, &countingWriter)
 	if err != nil {
 		println("Error in tarify top level", err.Error())
 		return err
 	}
+
+	println("wrote so many entries in indexArr: ", len(idxArr))
+	
+	
+
 	if err := wrt.Close(); err != nil {
 		return fmt.Errorf("close tar writer: %w", err)
 	}
@@ -109,28 +112,30 @@ func (cm *CephMount) CompressSubvolume(subvolPath string, username string) error
 	return nil
 }
 
-// ended up being very weird, if a dir is met it skips to bottom level but it keeps BFS mechanics for normal files, it works so it does not matter
-func (cm *CephMount) tarifyBfs(rootPath string, tarW *tar.Writer) error {
-	println("did compress call")
-	if cm.CephMount == nil {
-		return fmt.Errorf("ceph mount is nil")
-	}
-	if rootPath == "" {
-		return fmt.Errorf("root path is empty")
-	}
-	if tarW == nil {
-		return fmt.Errorf("tar writer is nil")
-	}
-
-	type tarIndex struct {
+type tarIndex struct {
 		offset uint64
 		size   uint64
 		path   string
 	}
+
+// ended up being very weird, if a dir is met it skips to bottom level but it keeps BFS mechanics for normal files, it works so it does not matter
+func (cm *CephMount) tarifyBfs(rootPath string, tarW *tar.Writer, writeRef *countingWriter) ([]tarIndex,error) {
+	println("did compress call")
+	if cm.CephMount == nil {
+		return nil, fmt.Errorf("ceph mount is nil")
+	}
+	if rootPath == "" {
+		return nil,	 fmt.Errorf("root path is empty")
+	}
+	if tarW == nil {
+		return nil, fmt.Errorf("tar writer is nil")
+	}
+
+	
+	
+	
 	
 	var tarIndexArr []tarIndex
-	var globalFileOffset uint64
-	globalFileOffset = 0
 
 	var walk func(string) error
 	walk = func(currentPath string) error {
@@ -143,7 +148,7 @@ func (cm *CephMount) tarifyBfs(rootPath string, tarW *tar.Writer) error {
 		}
 		defer dir.Close()
 
-		
+		tarIndexArr = []tarIndex{}
 		
 		dir.RewindDir()
 		for {
@@ -168,6 +173,8 @@ func (cm *CephMount) tarifyBfs(rootPath string, tarW *tar.Writer) error {
 			}
 			mtime := time.Unix(attrs.Mtime.Sec, attrs.Mtime.Nsec)
 
+			//do dirs at all need to have their entries written? Can i just get away with file header tracking? 
+			//will implement just in case but i dont need this
 			if entry.DType() == cephfs.DTypeDir {
 				header := &tar.Header{
 					Name:     childPath,
@@ -178,6 +185,11 @@ func (cm *CephMount) tarifyBfs(rootPath string, tarW *tar.Writer) error {
 				if err := tarW.WriteHeader(header); err != nil {
 					return fmt.Errorf("write dir header for %q: %w", childPath, err)
 				}
+				tarIndexArr = append(tarIndexArr, tarIndex{
+					offset: writeRef.GetCount(),
+					size:   0,
+					path:   childPath,
+				})
 
 				if err := walk(childPath); err != nil {
 					return err
@@ -209,9 +221,10 @@ func (cm *CephMount) tarifyBfs(rootPath string, tarW *tar.Writer) error {
 				return fmt.Errorf("write file header for %q: %w", childPath, err)
 			}
 			
+			//this annoys me severely but if you arent going to let me look at the file offset i will do dumb stuff
 			
 			tarIndexArr = append(tarIndexArr, tarIndex{
-				offset: globalFileOffset,
+				offset: writeRef.GetCount(),
 				size:   uint64(attrs.Size),
 				path:   childPath,
 			})
@@ -232,5 +245,5 @@ func (cm *CephMount) tarifyBfs(rootPath string, tarW *tar.Writer) error {
 		return nil
 	}
 
-	return walk(rootPath)
+	return tarIndexArr, walk(rootPath)
 }

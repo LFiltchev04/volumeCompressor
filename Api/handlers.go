@@ -64,9 +64,10 @@ func doSnapshot(resp http.ResponseWriter, req *http.Request) {
 		resp.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-
+///IMPORTANT!!!!!!
 	type postBody struct {
-		SnapshotID string `json:"SnapshotID"`
+		DumpName string `json:"DumpName"` 
+		UserID string `json:"UserID"`
 		VolumePath string `json:"VolumePath"`
 	}
 
@@ -79,7 +80,7 @@ func doSnapshot(resp http.ResponseWriter, req *http.Request) {
 	globalConf := Configuration.Global.GlobalMnt
 	var mntWrap CephStorage.CephMount
 	mntWrap.CephMount = &globalConf
-	mntWrap.CompressSubvolume(postedData.VolumePath, "rpo")
+	mntWrap.CompressSubvolume(postedData.VolumePath, postedData.UserID, postedData.DumpName)
 
 
 	//for now i am assuming that the path is right, will see
