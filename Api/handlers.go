@@ -1,18 +1,14 @@
 package Api
 
 import (
+	"compressor/CephStorage"
+	"compressor/Configuration"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
-	"path"
-	"strings"
 
 	"github.com/gorilla/mux"
-
-	"compressor/CephStorage"
-	"compressor/Configuration"
 )
 
 func doTest(resp http.ResponseWriter, req *http.Request){
@@ -27,7 +23,6 @@ func doTest(resp http.ResponseWriter, req *http.Request){
 	//json.Unmarshal(bdy, &elem)
 
 	mnt := Configuration.Global.GlobalMnt
-	//gotta get rid of the hardlinks eventually
 	dirEnt, _ := mnt.OpenDir("/volumes/csi/csi-vol-3dbb4382-b70b-472d-9e7c-c31c9815841c/5030be57-07d6-4daa-ae31-13fae5206f5a/arch")
 	if dirEnt == nil {
 		println("this was nil?")
@@ -59,26 +54,20 @@ func doTest(resp http.ResponseWriter, req *http.Request){
 
 
 func doSnapshot(resp http.ResponseWriter, req *http.Request) {
-	fmt.Println("doSnapshot: method=", req.Method, "Content-Length=", req.ContentLength)
-	fmt.Println("doSnapshot: headers=", req.Header)
-
 	bdyByts, err := io.ReadAll(req.Body)
 	if err != nil {
 		http.Error(resp, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	fmt.Println("doSnapshot: read body len=", len(bdyByts), "contents=", string(bdyByts))
-
-	if len(bdyByts) == 0 {
-		http.Error(resp, "empty request body", http.StatusBadRequest)
+	if req.Method != http.MethodPost {
+		resp.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
 
 	type postBody struct {
 		SnapshotID string `json:"SnapshotID"`
 		VolumePath string `json:"VolumePath"`
-		EnvName string `json:"EnvName"`
 	}
 
 	var postedData postBody
@@ -90,44 +79,7 @@ func doSnapshot(resp http.ResponseWriter, req *http.Request) {
 	globalConf := Configuration.Global.GlobalMnt
 	var mntWrap CephStorage.CephMount
 	mntWrap.CephMount = &globalConf
-
-	snapshotPath := postedData.VolumePath + "/.snap/" + postedData.EnvName;
-
-	parrentDir := path.Dir(snapshotPath)
-	strArr := strings.Split(parrentDir, "/")
-
-	volumeName := strArr[len(strArr)-1]
-
-	dirCont, err := mntWrap.CephMount.OpenDir(postedData.VolumePath + "/.snap/")
-	if err != nil {
-		fmt.Println("doSnapshot: error checking .snap directory:", err.Error())
-		resp.WriteHeader(500)
-		resp.Write([]byte("Error checking .snap directory: " + err.Error()))
-		return
-	}
-
-	for {
-		dentry, err := dirCont.ReadDir()
-		if err != nil {
-			errMsg := fmt.Sprintf("doSnapshot: error reading .snap directory: %v", err)
-			fmt.Println(errMsg)
-			resp.WriteHeader(500)
-			resp.Write([]byte(errMsg))
-			return
-		}
-
-		if dentry == nil {
-			SnapshotCeph(postedData.EnvName, volumeName)
-			break
-		}
-	
-		if dentry.Name() == postedData.EnvName {
-			break
-		}
-	
-	}
-
-	mntWrap.CompressSubvolume(snapshotPath, postedData.SnapshotID)
+	mntWrap.CompressSubvolume(postedData.VolumePath, "rpo")
 
 
 	//for now i am assuming that the path is right, will see
@@ -162,22 +114,13 @@ func doHealthz(resp http.ResponseWriter, req *http.Request) {
 
 
 func doDistribution(resp http.ResponseWriter, req *http.Request){
-	fmt.Println("doDistribution: method=", req.Method, "Content-Length=", req.ContentLength)
-	fmt.Println("doDistribution: headers=", req.Header)
-
+	
 	reqBody, err := io.ReadAll(req.Body)
-
+	
 	if err != nil {
-		fmt.Println("Error on body read from doDistribution", err.Error())
+		println("Error on body read from doDistribution", err.Error())
 		//revise theese error codes later
 		resp.WriteHeader(500)
-		return
-	}
-
-	fmt.Println("doDistribution: read body len=", len(reqBody), "contents=", string(reqBody))
-
-	if len(reqBody) == 0 {
-		http.Error(resp, "empty request body", http.StatusBadRequest)
 		return
 	}
 
@@ -188,11 +131,7 @@ func doDistribution(resp http.ResponseWriter, req *http.Request){
 	}
 	var jsonInstance reqJson
 
-	if err := json.Unmarshal(reqBody, &jsonInstance); err != nil {
-		fmt.Println("doDistribution: json unmarshal error:", err.Error())
-		http.Error(resp, "invalid JSON: "+err.Error(), http.StatusBadRequest)
-		return
-	}
+	json.Unmarshal(reqBody,&jsonInstance)
 
 	println("vol pth: ", jsonInstance.VolumePath)
 
@@ -220,49 +159,4 @@ func doDistribution(resp http.ResponseWriter, req *http.Request){
 	cMnt.CephMount = &Configuration.Global.GlobalMnt
 	cMnt.HardlinkBlob(rawBlobPath,jsonInstance.Username)
 
-}
-
-
-
-func doMakeEnv(resp http.ResponseWriter, req *http.Request){
-
-
-	type reqJson struct {
-		VolumePath string `json:"VolumePath"`
-		Username string `json:"Username"`
-		EnvName string `json:"EnvName"`
-	}
-	var jsonInstance reqJson
-
-	reqBody, err := io.ReadAll(req.Body)
-	if err != nil {
-		fmt.Println("Error on body read from doMakeEnv", err.Error())
-		resp.WriteHeader(500)
-		return
-	}
-
-	if err := json.Unmarshal(reqBody, &jsonInstance); err != nil {
-		fmt.Println("doMakeEnv: json unmarshal error:", err.Error())
-		http.Error(resp, "invalid JSON: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-
-
-	
-	globalConf := Configuration.Global.GlobalMnt
-	var mntWrap CephStorage.CephMount
-	mntWrap.CephMount = &globalConf
-
-	err = mntWrap.CephMount.MakeDir(jsonInstance.VolumePath+ "/" + jsonInstance.EnvName, 0644)
-	if err != nil {
-		fmt.Println("doMakeEnv: error creating directory:", err.Error())
-		resp.WriteHeader(500)
-		resp.Write([]byte("Error creating directory: " + err.Error()))
-		return
-	}
-	
-	//simple symlink to get the other dirs to show up in alt repos
-
-	resp.WriteHeader(200)
-	resp.Write([]byte("Environment created successfully"))
 }

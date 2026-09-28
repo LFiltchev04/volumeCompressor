@@ -78,6 +78,10 @@ func (cm *CephMount) CompressSubvolume(subvolPath string, username string) error
 	}
 
 	writer, errWrite := cm.CephWrite(tarPath)
+	var countingWriter = countingWriter{writer: writer, c: 0}
+
+
+
 	println("In compress, values are: ", subvolPath, workplaceMount)
 	if errWrite != nil {
 		println("cephWrite error: ", errWrite.Error())
@@ -85,7 +89,9 @@ func (cm *CephMount) CompressSubvolume(subvolPath string, username string) error
 	}
 	println("entered tarify?")
 
-	wrt := tar.NewWriter(writer)
+	
+	wrt := tar.NewWriter(&countingWriter)
+	
 	err := cm.tarifyBfs(subvolPath, wrt)
 	if err != nil {
 		println("Error in tarify top level", err.Error())
@@ -122,7 +128,9 @@ func (cm *CephMount) tarifyBfs(rootPath string, tarW *tar.Writer) error {
 		path   string
 	}
 	
-	var tarIndexArr []tarIndex;
+	var tarIndexArr []tarIndex
+	var globalFileOffset uint64
+	globalFileOffset = 0
 
 	var walk func(string) error
 	walk = func(currentPath string) error {
@@ -200,13 +208,16 @@ func (cm *CephMount) tarifyBfs(rootPath string, tarW *tar.Writer) error {
 				file.Close()
 				return fmt.Errorf("write file header for %q: %w", childPath, err)
 			}
+			
+			
 			tarIndexArr = append(tarIndexArr, tarIndex{
-				offset: 0,
+				offset: globalFileOffset,
 				size:   uint64(attrs.Size),
 				path:   childPath,
 			})
 			file.Seek(0,io.SeekStart)
 
+			
 			if btsWrtn, err := io.CopyN(tarW, file, int64(attrs.Size)); err != nil {
 				println("Copying")
 				println("Bytes written: ", btsWrtn, "Bytes from stat: ", attrs.Size)
