@@ -46,7 +46,7 @@ func (cm* CephMount)HardlinkBlob(blobPath string, repoName string, vname string)
 	}
 	println("finished hash")
 
-	dgst := digest.FromString(hash)
+	dgst, _ := digest.Parse(hash)
 	println("dgst created", dgst.String())
 	pth, err := PathFor(layerLinkPathSpec{
 		name: repoName,

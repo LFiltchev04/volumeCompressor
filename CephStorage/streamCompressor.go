@@ -87,7 +87,6 @@ func (cm *CephMount) CompressSubvolume(subvolPath string, username string, dumpN
 	}
 	println("entered tarify?")
 
-	
 	wrt := tar.NewWriter(&countingWriter)
 	
 	idxArr, err := cm.tarifyBfs(subvolPath, wrt, &countingWriter)
@@ -106,6 +105,13 @@ func (cm *CephMount) CompressSubvolume(subvolPath string, username string, dumpN
 	if err := writer.Close(); err != nil {
 		return fmt.Errorf("close archive writer: %w", err)
 	}
+
+	//get a hash and link 
+	if err := cm.HardlinkBlob(subvolPath, username, dumpName); err != nil {
+		return fmt.Errorf("hardliner failed %v", err)
+	}
+
+	
 
 	println("left tarify")
 	return nil
