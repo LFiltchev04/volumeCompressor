@@ -37,7 +37,7 @@ func (cm* CephMount)blobHasher(fileLocation string)(string, error){
 
 //hardlinks a pointer in the cncf distribution CAS to a real file in the pvc backend
 //shouldve called it symlinker since it aint a hardlink but i dont want to go digging here
-func (cm* CephMount)HardlinkBlob(blobPath string, repoName string)error{
+func (cm* CephMount)HardlinkBlob(blobPath string, repoName string, vname string)error{
 
 	hash, err := cm.blobHasher(blobPath)
 	if err != nil {
@@ -55,6 +55,8 @@ func (cm* CephMount)HardlinkBlob(blobPath string, repoName string)error{
 	if err != nil {
 		return err
 	}
+
+
 
 	linkPath := Configuration.Global.BaseConf.DistributionPV + pth
 	pDir := path.Dir(pth)

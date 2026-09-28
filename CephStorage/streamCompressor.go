@@ -107,7 +107,6 @@ func (cm *CephMount) CompressSubvolume(subvolPath string, username string, dumpN
 		return fmt.Errorf("close archive writer: %w", err)
 	}
 
-	cm.HardlinkBlob(tarPath, username)
 	println("left tarify")
 	return nil
 }
