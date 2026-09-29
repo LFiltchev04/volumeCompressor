@@ -86,8 +86,7 @@ func doSnapshot(resp http.ResponseWriter, req *http.Request) {
 
 	//for now i am assuming that the path is right, will see
 	
-
-
+	mntWrap.HardlinkBlob(VolumePath, DumpName, )
 
 	resp.WriteHeader(http.StatusOK)
 	_, _ = resp.Write([]byte("ok"))
