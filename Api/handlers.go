@@ -10,6 +10,7 @@ import (
 
 	"compressor/CephStorage"
 	"compressor/Configuration"
+	help "compressor/Helpers"
 )
 
 func doTest(resp http.ResponseWriter, req *http.Request){
@@ -68,7 +69,7 @@ func doSnapshot(resp http.ResponseWriter, req *http.Request) {
 ///IMPORTANT!!!!!!
 	type postBody struct {
 		DumpName string `json:"DumpName"` 
-		UserID string `json:"UserID"`
+		EnvName string `json:"EnvName"`
 		VolumePath string `json:"VolumePath"`
 	}
 
@@ -81,12 +82,16 @@ func doSnapshot(resp http.ResponseWriter, req *http.Request) {
 	globalConf := Configuration.Global.GlobalMnt
 	var mntWrap CephStorage.CephMount
 	mntWrap.CephMount = &globalConf
-	mntWrap.CompressSubvolume(postedData.VolumePath, postedData.UserID, postedData.DumpName)
+
+	mntWrap.CompressSubvolume(postedData.VolumePath, postedData.EnvName, postedData.DumpName)
+	VolumePath := postedData.VolumePath
+	DumpName := postedData.DumpName
 
 
 	//for now i am assuming that the path is right, will see
 	
-	mntWrap.HardlinkBlob(VolumePath, DumpName, )
+	
+	mntWrap.HardlinkBlob(VolumePath + "/arch/" + DumpName, DumpName, postedData.EnvName)
 
 	resp.WriteHeader(http.StatusOK)
 	_, _ = resp.Write([]byte("ok"))
@@ -160,4 +165,59 @@ func doDistribution(resp http.ResponseWriter, req *http.Request){
 	cMnt.CephMount = &Configuration.Global.GlobalMnt
 	cMnt.HardlinkBlob(rawBlobPath, rawBlobPath, jsonInstance.Username)
 
+}
+
+
+func doManifestOnly(resp http.ResponseWriter, req *http.Request){
+	reqBody, err := io.ReadAll(req.Body)
+	if err != nil {
+		println("Error on body read from doManifestOnly", err.Error())
+		resp.WriteHeader(500)
+		return
+	}
+
+	globalConf := Configuration.Global.GlobalMnt
+	var mntWrap CephStorage.CephMount
+	mntWrap.CephMount = &globalConf
+
+	type reqJson struct {
+		TagName string `json:"GenerationID"`
+		RepoID   string `json:"VolumePath"`
+		BlobList []string `json:"BlobList"`
+	}
+	var jsonInstance reqJson
+
+	json.Unmarshal(reqBody, &jsonInstance)
+
+	var uint64Sizes []int64
+	for _, blb := range jsonInstance.BlobList {
+		
+		size, err := mntWrap.GetSize(blb)
+
+		if err != nil {
+			println("Error getting size for blob: ", blb, " error: ", err.Error())
+			resp.WriteHeader(500)
+			return
+		}
+
+		//its big enough
+		intSize := int64(size)
+		uint64Sizes = append(uint64Sizes, intSize)
+	}
+															//hope thats right
+	mFest, err:= help.FormatManifest(jsonInstance.BlobList, uint64Sizes, "application.vnd.oci.image.manifest.v1+json")
+	if err != nil {
+		println("Error formatting manifest: ", err.Error())
+		resp.WriteHeader(500)
+		return
+	}
+	byteArr, _ := json.Marshal(mFest)
+	
+	if err := mntWrap.WriteBlob(&byteArr); err != nil {
+		println("Error writing manifest blob: ", err.Error())
+		resp.WriteHeader(500)
+		return
+	}
+
+	resp.WriteHeader(200)
 }
