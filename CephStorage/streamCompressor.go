@@ -245,6 +245,7 @@ func (cm *CephMount) tarifyBfs(rootPath string, tarW *tar.Writer, writeRef *coun
 			if err := file.Close(); err != nil {
 				return fmt.Errorf("close file %q: %w", childPath, err)
 			}
+			
 		}
 
 		return nil
