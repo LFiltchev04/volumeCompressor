@@ -8,7 +8,9 @@ import (
 	"os"
 	"path"
 	"time"
+	"encoding/binary"
 
+	"github.com/cespare/xxhash/v2"
 	cephfs "github.com/ceph/go-ceph/cephfs"
 )
 
@@ -154,6 +156,7 @@ func (cm *CephMount) tarifyBfs(rootPath string, tarW *tar.Writer, writeRef *coun
 		defer dir.Close()
 
 		tarIndexArr = []tarIndex{}
+		xxHashFastLookup := [][6]byte{}
 		
 		dir.RewindDir()
 		for {
@@ -187,6 +190,15 @@ func (cm *CephMount) tarifyBfs(rootPath string, tarW *tar.Writer, writeRef *coun
 					Typeflag: tar.TypeDir,
 					ModTime:  mtime,
 				}
+
+				xxHashFull := [8]byte{}
+				binary.LittleEndian.PutUint64(xxHashFull[:], xxhash.Sum64String(childPath))
+				
+				xxHashTrunc := [6]byte{}
+
+				copy(xxHashTrunc[:], xxHashFull[:6])
+				xxHashFastLookup = append(xxHashFastLookup, xxHashTrunc)
+
 				if err := tarW.WriteHeader(header); err != nil {
 					return fmt.Errorf("write dir header for %q: %w", childPath, err)
 				}
