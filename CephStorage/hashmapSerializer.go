@@ -3,6 +3,7 @@ import(
 	"bytes"
 	"encoding/binary"
 	"os"
+	"fmt"
 )
 
 
@@ -11,7 +12,7 @@ func (cm *CephMount) serializeHashIndex(indexArr []xxHashStruct, wrtPath string)
 	println("Serializing hash index to: ", wrtPath)
 	buf := new(bytes.Buffer)
 
-	file, err := cm.CephMount.Open(wrtPath, os.O_WRONLY, 0644)
+	file, err := cm.CephMount.Open(wrtPath, os.O_WRONLY | os.O_CREATE, 0644)
 	if err != nil {
 		return err
 	}
@@ -25,8 +26,14 @@ func (cm *CephMount) serializeHashIndex(indexArr []xxHashStruct, wrtPath string)
 		byteArr := []byte(entry.pathName)
 		binary.Write(buf, binary.LittleEndian, byteArr)
 		
-		file.Write(buf.Bytes())
-	}
+		num, err := file.Write(buf.Bytes())
+		if err != nil {
+			return err
+		}
+		if num != buf.Len() {
+			return fmt.Errorf("incomplete write: wrote %d bytes, expected %d", num, buf.Len())
+		}
+	}	
 
 
 

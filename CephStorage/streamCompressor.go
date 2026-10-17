@@ -12,7 +12,6 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 	cephfs "github.com/ceph/go-ceph/cephfs"
-	"compressor/Configuration"
 )
 
 var tempRootDir string
@@ -105,7 +104,7 @@ func (cm *CephMount) CompressSubvolume(subvolPath string, username string, dumpN
 
 	
 	println("wrote so many entries in xxArr: ", len(xxArr))
-	go cm.serializeHashIndex(xxArr, path.Join(Configuration.Global.BaseConf.DistributionPV, tarPath))
+	go cm.serializeHashIndex(xxArr, archvDir + "/archive.trash")
 
 
 	if err := wrt.Close(); err != nil {
