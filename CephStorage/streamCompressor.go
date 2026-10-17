@@ -103,6 +103,7 @@ func (cm *CephMount) CompressSubvolume(subvolPath string, username string, dumpN
 		return err
 	}
 
+	
 	println("wrote so many entries in xxArr: ", len(xxArr))
 	go cm.serializeHashIndex(xxArr, path.Join(Configuration.Global.BaseConf.DistributionPV, tarPath))
 
@@ -173,6 +174,10 @@ func (cm *CephMount) tarifyBfs(rootPath string, tarW *tar.Writer, writeRef *coun
 			}
 
 			if entry.Name() == "." || entry.Name() == ".."{
+				continue
+			}
+
+			if currentPath == rootPath && entry.Name() == "arch" {
 				continue
 			}
 

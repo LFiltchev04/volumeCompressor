@@ -8,7 +8,7 @@ import(
 
 //wrt path is the globalPVs blob symlink address
 func (cm *CephMount) serializeHashIndex(indexArr []xxHashStruct, wrtPath string) error {
-	
+	println("Serializing hash index to: ", wrtPath)
 	buf := new(bytes.Buffer)
 
 	file, err := cm.CephMount.Open(wrtPath, os.O_WRONLY, 0644)
