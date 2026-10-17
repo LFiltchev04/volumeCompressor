@@ -1,14 +1,16 @@
 package Api
 
 import (
-	"compressor/CephStorage"
-	"compressor/Configuration"
 	"encoding/json"
 	"io"
 	"net/http"
 	"os"
 
 	"github.com/gorilla/mux"
+
+	"compressor/CephStorage"
+	"compressor/Configuration"
+	help "compressor/Helpers"
 )
 
 func doTest(resp http.ResponseWriter, req *http.Request){
@@ -44,12 +46,12 @@ func doTest(resp http.ResponseWriter, req *http.Request){
 
 	println("derived arch file: ", archFile)
 
-	var cMnt CephStorage.CephMount
-	cMnt.CephMount = &Configuration.Global.GlobalMnt
+	//var cMnt CephStorage.CephMount
+	//cMnt.CephMount = &Configuration.Global.GlobalMnt
 
 	//hashPath := "/volumes/csi/csi-vol-3dbb4382-b70b-472d-9e7c-c31c9815841c/5030be57-07d6-4daa-ae31-13fae5206f5a/arch"
 	//cMnt.HardlinkBlob(hashPath,"rpo")
-
+//a
 }
 
 
@@ -67,7 +69,7 @@ func doSnapshot(resp http.ResponseWriter, req *http.Request) {
 ///IMPORTANT!!!!!!
 	type postBody struct {
 		DumpName string `json:"DumpName"` 
-		UserID string `json:"UserID"`
+		EnvName string `json:"EnvName"`
 		VolumePath string `json:"VolumePath"`
 	}
 
@@ -80,13 +82,16 @@ func doSnapshot(resp http.ResponseWriter, req *http.Request) {
 	globalConf := Configuration.Global.GlobalMnt
 	var mntWrap CephStorage.CephMount
 	mntWrap.CephMount = &globalConf
-	mntWrap.CompressSubvolume(postedData.VolumePath, postedData.UserID, postedData.DumpName)
+
+	mntWrap.CompressSubvolume(postedData.VolumePath, postedData.EnvName, postedData.DumpName)
+	VolumePath := postedData.VolumePath
+	DumpName := postedData.DumpName
 
 
 	//for now i am assuming that the path is right, will see
 	
-
-
+	
+	mntWrap.HardlinkBlob(VolumePath + "/arch/" + DumpName, DumpName, postedData.EnvName)
 
 	resp.WriteHeader(http.StatusOK)
 	_, _ = resp.Write([]byte("ok"))
@@ -138,7 +143,7 @@ func doDistribution(resp http.ResponseWriter, req *http.Request){
 
 	rawBlobPath := jsonInstance.VolumePath + "/" + jsonInstance.GenerationID
 	println("raw blob path: ", rawBlobPath)
-	rawBlobFd, err :=Configuration.Global.GlobalMnt.Open(rawBlobPath,os.O_RDONLY,0644)
+	rawBlobFd, err :=Configuration.Global.GlobalMnt.Open(rawBlobPath,os.O_RDWR,0644)
 	
 	if err != nil { 
 		println("Raw blob reader is throwing an error: ", err.Error() + " on path: ", rawBlobPath)
@@ -160,4 +165,59 @@ func doDistribution(resp http.ResponseWriter, req *http.Request){
 	cMnt.CephMount = &Configuration.Global.GlobalMnt
 	cMnt.HardlinkBlob(rawBlobPath, rawBlobPath, jsonInstance.Username)
 
+}
+
+
+func doManifestOnly(resp http.ResponseWriter, req *http.Request){
+	reqBody, err := io.ReadAll(req.Body)
+	if err != nil {
+		println("Error on body read from doManifestOnly", err.Error())
+		resp.WriteHeader(500)
+		return
+	}
+
+	globalConf := Configuration.Global.GlobalMnt
+	var mntWrap CephStorage.CephMount
+	mntWrap.CephMount = &globalConf
+
+	type reqJson struct {
+		TagName string `json:"GenerationID"`
+		RepoID   string `json:"VolumePath"`
+		BlobList []string `json:"BlobList"`
+	}
+	var jsonInstance reqJson
+
+	json.Unmarshal(reqBody, &jsonInstance)
+
+	var uint64Sizes []int64
+	for _, blb := range jsonInstance.BlobList {
+		
+		size, err := mntWrap.GetSize(blb)
+
+		if err != nil {
+			println("Error getting size for blob: ", blb, " error: ", err.Error())
+			resp.WriteHeader(500)
+			return
+		}
+
+		//its big enough
+		intSize := int64(size)
+		uint64Sizes = append(uint64Sizes, intSize)
+	}
+															//hope thats right
+	mFest, err:= help.FormatManifest(jsonInstance.BlobList, uint64Sizes, "application.vnd.oci.image.manifest.v1+json")
+	if err != nil {
+		println("Error formatting manifest: ", err.Error())
+		resp.WriteHeader(500)
+		return
+	}
+	byteArr, _ := json.Marshal(mFest)
+	
+	if err := mntWrap.WriteBlob(&byteArr); err != nil {
+		println("Error writing manifest blob: ", err.Error())
+		resp.WriteHeader(500)
+		return
+	}
+
+	resp.WriteHeader(200)
 }
