@@ -23,8 +23,12 @@ func (cm* CephMount)blobHasher(fileLocation string)(string, error){
 		println("errored out on raw bob hasher open with error: ", err.Error())
 	}
 	
-	fSize, _ := file.Fstatx(cephfs.StatxSize,0)
+	fSize, err := file.Fstatx(cephfs.StatxSize,0)
 
+	if err != nil {
+		println("errored out on raw bob hasher fstatx with error: ", err.Error())
+		return "", err
+	}
 	hasher := sha256.New()
 	println("about to fork over: ", fSize.Size, " bytes")
 	io.CopyN(hasher, file, int64(fSize.Size))
@@ -39,11 +43,16 @@ func (cm* CephMount)blobHasher(fileLocation string)(string, error){
 //shouldve called it symlinker since it aint a hardlink but i dont want to go digging here
 func (cm* CephMount)HardlinkBlob(blobPath string, repoName string, vname string)error{
 
+	println("Hardlinking blob for path: ", blobPath)
 	hash, err := cm.blobHasher(blobPath)
 	if err != nil {
 		println("err on hasher: ", err.Error())
 		return err
 	}
+
+	//renames it to hash value
+	cm.CephMount.Rename(blobPath, hash)
+
 	println("finished hash")
 
 	dgst, _ := digest.Parse(hash)

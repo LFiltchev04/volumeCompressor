@@ -4,6 +4,7 @@ go 1.26.4
 
 require (
 	github.com/ceph/go-ceph v0.40.0
+	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/go-yaml/yaml v2.1.0+incompatible
 	github.com/gorilla/mux v1.8.1
 	github.com/opencontainers/image-spec v1.1.1

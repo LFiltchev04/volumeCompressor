@@ -143,7 +143,7 @@ func doDistribution(resp http.ResponseWriter, req *http.Request){
 
 	rawBlobPath := jsonInstance.VolumePath + "/" + jsonInstance.GenerationID
 	println("raw blob path: ", rawBlobPath)
-	rawBlobFd, err :=Configuration.Global.GlobalMnt.Open(rawBlobPath,os.O_RDONLY,0644)
+	rawBlobFd, err :=Configuration.Global.GlobalMnt.Open(rawBlobPath,os.O_RDWR,0644)
 	
 	if err != nil { 
 		println("Raw blob reader is throwing an error: ", err.Error() + " on path: ", rawBlobPath)

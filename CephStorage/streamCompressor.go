@@ -12,6 +12,7 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 	cephfs "github.com/ceph/go-ceph/cephfs"
+	"compressor/Configuration"
 )
 
 var tempRootDir string
@@ -70,19 +71,24 @@ func tarTypeFlag(mode uint16) (byte, error) {
 }
 
 func (cm *CephMount) CompressSubvolume(subvolPath string, username string, dumpName string) error {
-	workplaceMount := path.Dir(subvolPath)
 
 	archvDir := path.Join(subvolPath, "arch")
-	tarPath := path.Join(archvDir, "archv.tar")
+	tarPath := path.Join(archvDir, dumpName)
 	errMd := cm.CephMount.MakeDir(archvDir, uint32(755))
 	if errMd != nil {
 		println("error on creating tarpath dir: ",archvDir,"with error: ", errMd.Error())
 	}
 
+	f, err:= cm.CephMount.Open(tarPath, os.O_CREATE, 0644)
+	if err != nil {
+		println("error opening tar file: ", err.Error())
+		return err
+	}
+	f.Close()
 	writer, errWrite := cm.CephWrite(tarPath)
 	var countingWriter = countingWriter{writer: writer, c: 0}
 
-	println("In compress, values are: ", subvolPath, workplaceMount)
+	println("In compress, values are: ", subvolPath)
 	if errWrite != nil {
 		println("cephWrite error: ", errWrite.Error())
 		return errors.New("Assigning a write object for the compressor failed")
@@ -91,15 +97,15 @@ func (cm *CephMount) CompressSubvolume(subvolPath string, username string, dumpN
 
 	wrt := tar.NewWriter(&countingWriter)
 	
-	idxArr, err := cm.tarifyBfs(subvolPath, wrt, &countingWriter)
+	xxArr, err := cm.tarifyBfs(subvolPath, wrt, &countingWriter)
 	if err != nil {
 		println("Error in tarify top level", err.Error())
 		return err
 	}
 
-	println("wrote so many entries in indexArr: ", len(idxArr))
-	
-	
+	println("wrote so many entries in xxArr: ", len(xxArr))
+	go cm.serializeHashIndex(xxArr, path.Join(Configuration.Global.BaseConf.DistributionPV, tarPath))
+
 
 	if err := wrt.Close(); err != nil {
 		return fmt.Errorf("close tar writer: %w", err)
@@ -109,7 +115,7 @@ func (cm *CephMount) CompressSubvolume(subvolPath string, username string, dumpN
 	}
 
 	//get a hash and link 
-	if err := cm.HardlinkBlob(subvolPath, username, dumpName); err != nil {
+	if err := cm.HardlinkBlob(tarPath, username, dumpName); err != nil {
 		return fmt.Errorf("hardliner failed %v", err)
 	}
 
@@ -119,30 +125,31 @@ func (cm *CephMount) CompressSubvolume(subvolPath string, username string, dumpN
 	return nil
 }
 
-type tarIndex struct {
-		offset uint64
-		size   uint64
-		path   string
-	}
+
+
+type xxHashStruct struct {
+		xxHashID [6]byte
+		pathName string
+		recordLen uint16
+}
 
 // ended up being very weird, if a dir is met it skips to bottom level but it keeps BFS mechanics for normal files, it works so it does not matter
-func (cm *CephMount) tarifyBfs(rootPath string, tarW *tar.Writer, writeRef *countingWriter) ([]tarIndex,error) {
+func (cm *CephMount) tarifyBfs(rootPath string, tarW *tar.Writer, writeRef *countingWriter) ([]xxHashStruct, error) {
 	println("did compress call")
 	if cm.CephMount == nil {
 		return nil, fmt.Errorf("ceph mount is nil")
 	}
 	if rootPath == "" {
-		return nil,	 fmt.Errorf("root path is empty")
+		return nil, fmt.Errorf("root path is empty")
 	}
 	if tarW == nil {
 		return nil, fmt.Errorf("tar writer is nil")
 	}
 
+
 	
-	
-	
-	
-	var tarIndexArr []tarIndex
+	var xxHashFastLookup []xxHashStruct
+
 
 	var walk func(string) error
 	walk = func(currentPath string) error {
@@ -154,9 +161,6 @@ func (cm *CephMount) tarifyBfs(rootPath string, tarW *tar.Writer, writeRef *coun
 			return fmt.Errorf("open dir %q: %w", currentPath, err)
 		}
 		defer dir.Close()
-
-		tarIndexArr = []tarIndex{}
-		xxHashFastLookup := [][6]byte{}
 		
 		dir.RewindDir()
 		for {
@@ -190,23 +194,10 @@ func (cm *CephMount) tarifyBfs(rootPath string, tarW *tar.Writer, writeRef *coun
 					Typeflag: tar.TypeDir,
 					ModTime:  mtime,
 				}
-
-				xxHashFull := [8]byte{}
-				binary.LittleEndian.PutUint64(xxHashFull[:], xxhash.Sum64String(childPath))
 				
-				xxHashTrunc := [6]byte{}
-
-				copy(xxHashTrunc[:], xxHashFull[:6])
-				xxHashFastLookup = append(xxHashFastLookup, xxHashTrunc)
-
 				if err := tarW.WriteHeader(header); err != nil {
 					return fmt.Errorf("write dir header for %q: %w", childPath, err)
 				}
-				tarIndexArr = append(tarIndexArr, tarIndex{
-					offset: writeRef.GetCount(),
-					size:   0,
-					path:   childPath,
-				})
 
 				if err := walk(childPath); err != nil {
 					return err
@@ -237,17 +228,22 @@ func (cm *CephMount) tarifyBfs(rootPath string, tarW *tar.Writer, writeRef *coun
 				file.Close()
 				return fmt.Errorf("write file header for %q: %w", childPath, err)
 			}
-			
-			//this annoys me severely but if you arent going to let me look at the file offset i will do dumb stuff
-			
-			tarIndexArr = append(tarIndexArr, tarIndex{
-				offset: writeRef.GetCount(),
-				size:   uint64(attrs.Size),
-				path:   childPath,
-			})
-			file.Seek(0,io.SeekStart)
 
-			
+			xxHashFull := [8]byte{}
+			binary.LittleEndian.PutUint64(xxHashFull[:], xxhash.Sum64String(childPath))
+			xxHashTrunc := [6]byte{}
+
+			strlenCast := uint16(len(childPath))
+			var hashmapEnty xxHashStruct
+			hashmapEnty = xxHashStruct{
+				xxHashID: xxHashTrunc,
+				recordLen: strlenCast,
+				pathName: childPath,
+			}
+			copy(xxHashTrunc[:], xxHashFull[:6])
+			xxHashFastLookup = append(xxHashFastLookup, hashmapEnty)
+
+			file.Seek(0,io.SeekStart)
 			if btsWrtn, err := io.CopyN(tarW, file, int64(attrs.Size)); err != nil {
 				println("Copying")
 				println("Bytes written: ", btsWrtn, "Bytes from stat: ", attrs.Size)
@@ -263,5 +259,5 @@ func (cm *CephMount) tarifyBfs(rootPath string, tarW *tar.Writer, writeRef *coun
 		return nil
 	}
 
-	return tarIndexArr, walk(rootPath)
+	return xxHashFastLookup, walk(rootPath)
 }
