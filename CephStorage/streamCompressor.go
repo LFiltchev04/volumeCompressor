@@ -123,8 +123,11 @@ func (cm *CephMount) CompressSubvolume(subvolPath string, username string, dumpN
 
 type xxHashStruct struct {
 		xxHashID [6]byte
+		fileSize uint64
 		recordLen uint16
+		offsetPos uint64
 		pathName string
+		
 }
 
 // ended up being very weird, if a dir is met it skips to bottom level but it keeps BFS mechanics for normal files, it works so it does not matter
@@ -230,24 +233,29 @@ func (cm *CephMount) tarifyBfs(rootPath string, tarW *tar.Writer, writeRef *coun
 			xxHashFull := [8]byte{}
 			binary.LittleEndian.PutUint64(xxHashFull[:], xxhash.Sum64String(childPath))
 			xxHashTrunc := [6]byte{}
+			copy(xxHashTrunc[:], xxHashFull[:6])
 
 			strlenCast := uint16(len(childPath))
 			var hashmapEnty xxHashStruct
 			hashmapEnty = xxHashStruct{
 				xxHashID: xxHashTrunc,
+				fileSize: uint64(attrs.Size),
+				offsetPos: writeRef.GetCount(),
 				recordLen: strlenCast,
 				pathName: childPath,
 			}
-			copy(xxHashTrunc[:], xxHashFull[:6])
 			xxHashFastLookup = append(xxHashFastLookup, hashmapEnty)
 
 			file.Seek(0,io.SeekStart)
+
 			if btsWrtn, err := io.CopyN(tarW, file, int64(attrs.Size)); err != nil {
 				println("Copying")
 				println("Bytes written: ", btsWrtn, "Bytes from stat: ", attrs.Size)
 				file.Close()
 				return fmt.Errorf("copy file contents for %q: %w", childPath, err)
 			}
+
+			
 			if err := file.Close(); err != nil {
 				return fmt.Errorf("close file %q: %w", childPath, err)
 			}

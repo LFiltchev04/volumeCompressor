@@ -8,7 +8,7 @@ import (
 	"path"
 	"strings"
 
-	//"os"
+	"os"
 	"fmt"
 
 	"github.com/ceph/go-ceph/cephfs"
@@ -153,6 +153,10 @@ func (cm* CephMount)HardlinkBlob(blobPath string, repoName string, vname string)
 	errV := cm.CephMount.Symlink(blobPath,hardlinkDestination)
 	if errV != nil {
 		println("error on symlinking is: ", errV.Error())
+
+		if os.IsExist(errV) {
+			return nil
+		}
 		return errV
 	}
 
