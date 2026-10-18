@@ -7,6 +7,20 @@ import (
 	"os"
 )
 
+// Record layout (little endian): xxHashID[6] | fileSize u64 | offsetPos u64 | recordLen u64 | pathName[recordLen]
+func encodeHashEntry(buf *bytes.Buffer, entry xxHashStruct) error {
+	if entry.recordLen != uint64(len(entry.pathName)) {
+		return fmt.Errorf("path length mismatch for hash index entry: recorded %d bytes, got %d", entry.recordLen, len(entry.pathName))
+	}
+	for _, field := range []any{entry.xxHashID, entry.fileSize, entry.offsetPos, entry.recordLen} {
+		if err := binary.Write(buf, binary.LittleEndian, field); err != nil {
+			return fmt.Errorf("serialize hash index entry: %w", err)
+		}
+	}
+	buf.WriteString(entry.pathName)
+	return nil
+}
+
 // wrt path is the globalPVs blob symlink address
 func (cm *CephMount) serializeHashIndex(indexArr []xxHashStruct, wrtPath string) error {
 	println("Serializing hash index to: ", wrtPath)
@@ -21,21 +35,8 @@ func (cm *CephMount) serializeHashIndex(indexArr []xxHashStruct, wrtPath string)
 	for _, entry := range indexArr {
 		buf.Reset()
 
-		for _, field := range []any{
-			entry.xxHashID,
-			entry.fileSize,
-			entry.offsetPos,
-			entry.recordLen,
-		} {
-			if err := binary.Write(buf, binary.LittleEndian, field); err != nil {
-				return fmt.Errorf("serialize hash index entry: %w", err)
-			}
-		}
-		if entry.recordLen != uint64(len(entry.pathName)) {
-			return fmt.Errorf("path length mismatch for hash index entry: recorded %d bytes, got %d", entry.recordLen, len(entry.pathName))
-		}
-		if _, err := buf.WriteString(entry.pathName); err != nil {
-			return fmt.Errorf("serialize hash index path: %w", err)
+		if err := encodeHashEntry(buf, entry); err != nil {
+			return err
 		}
 
 		num, err := file.Write(buf.Bytes())

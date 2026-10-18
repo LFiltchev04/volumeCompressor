@@ -6,3 +6,4 @@ main
 go.sum
 volume
 sample
+hashmapSerializer_test.go
