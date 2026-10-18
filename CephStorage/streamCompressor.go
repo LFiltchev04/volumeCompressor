@@ -33,7 +33,7 @@ func (cm *CephMount) CephWrite(path string) (io.WriteCloser, error) {
 	if cm.CephMount == nil {
 		return nil, errors.New("ceph mount is nil")
 	}
-	return cm.CephMount.Open(path, 777, uint32(os.O_WRONLY|os.O_CREATE|os.O_TRUNC))
+	return cm.CephMount.Open(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 }
 
 func tarTypeFlag(mode uint16) (byte, error) {
@@ -104,7 +104,7 @@ func (cm *CephMount) CompressSubvolume(subvolPath string, username string, dumpN
 
 	
 	println("wrote so many entries in xxArr: ", len(xxArr))
-	go cm.serializeHashIndex(xxArr, archvDir + "/archive.trash")
+	cm.serializeHashIndex(xxArr, archvDir + "/archive.trash")
 
 
 	if err := wrt.Close(); err != nil {
@@ -113,12 +113,6 @@ func (cm *CephMount) CompressSubvolume(subvolPath string, username string, dumpN
 	if err := writer.Close(); err != nil {
 		return fmt.Errorf("close archive writer: %w", err)
 	}
-
-	//get a hash and link 
-	if err := cm.HardlinkBlob(tarPath, username, dumpName); err != nil {
-		return fmt.Errorf("hardliner failed %v", err)
-	}
-
 	
 
 	println("left tarify")
@@ -129,8 +123,8 @@ func (cm *CephMount) CompressSubvolume(subvolPath string, username string, dumpN
 
 type xxHashStruct struct {
 		xxHashID [6]byte
-		pathName string
 		recordLen uint16
+		pathName string
 }
 
 // ended up being very weird, if a dir is met it skips to bottom level but it keeps BFS mechanics for normal files, it works so it does not matter

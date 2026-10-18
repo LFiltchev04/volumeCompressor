@@ -5,8 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
-	"os"
 	"path"
+	"strings"
 
 	//"os"
 	"fmt"
@@ -21,8 +21,10 @@ func (cm* CephMount)blobHasher(fileLocation string)(string, error){
 	file, err := cm.CephMount.Open(fileLocation,0,0644)
 	if err != nil {
 		println("errored out on raw bob hasher open with error: ", err.Error())
+		return "", err
 	}
-	
+	defer file.Close()
+
 	fSize, err := file.Fstatx(cephfs.StatxSize,0)
 
 	if err != nil {
@@ -39,9 +41,40 @@ func (cm* CephMount)blobHasher(fileLocation string)(string, error){
 }
 
 
+// ensureDir avoids ceph_mkdirs (which blocks here) by stat-ing first and only
+// creating the components that are actually missing.
+func (cm *CephMount) ensureDir(dir string) error {
+	if _, err := cm.CephMount.Statx(dir, cephfs.StatxMode, 0); err == nil {
+		println("dir already exists: ", dir)
+		return nil
+	}
+
+	cur := ""
+	for _, part := range strings.Split(strings.Trim(dir, "/"), "/") {
+		cur += "/" + part
+		if _, err := cm.CephMount.Statx(cur, cephfs.StatxMode, 0); err == nil {
+			continue
+		}
+		println("creating dir: ", cur)
+		if err := cm.CephMount.MakeDir(cur, 0755); err != nil {
+			// a concurrent creator or a stat race is fine as long as it exists now
+			if _, serr := cm.CephMount.Statx(cur, cephfs.StatxMode, 0); serr != nil {
+				return fmt.Errorf("mkdir %q: %w", cur, err)
+			}
+		}
+	}
+	return nil
+}
+
 //hardlinks a pointer in the cncf distribution CAS to a real file in the pvc backend
 //shouldve called it symlinker since it aint a hardlink but i dont want to go digging here
 func (cm* CephMount)HardlinkBlob(blobPath string, repoName string, vname string)error{
+
+	//first have to actually write the blob to the blob store
+
+
+
+
 
 	println("Hardlinking blob for path: ", blobPath)
 	hash, err := cm.blobHasher(blobPath)
@@ -50,38 +83,46 @@ func (cm* CephMount)HardlinkBlob(blobPath string, repoName string, vname string)
 		return err
 	}
 
+	println("exited hasher")
 	//renames it to hash value
 	cm.CephMount.Rename(blobPath, hash)
 
 	println("finished hash")
 
-	dgst, _ := digest.Parse(hash)
+	dgst, err := digest.Parse("sha256:" + hash)
+	if err != nil {
+		return fmt.Errorf("parse blob digest: %w", err)
+	}
 	println("dgst created", dgst.String())
 	pth, err := PathFor(layerLinkPathSpec{
 		name: repoName,
 		digest: dgst,
 	})
 	if err != nil {
+		println("error on PathFor: ", err.Error())
 		return err
 	}
 
 
 
+
 	linkPath := Configuration.Global.BaseConf.DistributionPV + pth
-	pDir := path.Dir(pth)
+	println("//////link path is: ", linkPath)
+	pDir := path.Dir(linkPath)
 
-	cm.CephMount.MakeDirs(pDir,0644)
+	err = cm.ensureDir(pDir)
+	if err != nil {
+		println("error making dirs: ", err.Error())
+		return err
+	}
 	println("The. dir made is: ", pDir)
-
-	cm.CephMount.Open(linkPath,os.O_CREATE,0644)
-
-
 
 	writeHandle, err := cm.CephWrite(linkPath)
 	if err != nil {
 		println("error writing linkfile: ", err.Error())
 		return  err
 	}
+	defer writeHandle.Close()
 
 
 	hash = dgst.String()
@@ -102,15 +143,18 @@ func (cm* CephMount)HardlinkBlob(blobPath string, repoName string, vname string)
 	hardlinkDestination := Configuration.Global.BaseConf.DistributionPV + pth
 
 	pDirHardl := path.Dir(hardlinkDestination)
-	cm.CephMount.MakeDirs(pDirHardl, 0644)
+	err = cm.ensureDir(pDirHardl)
+	if err != nil {
+		println("error making hardlink dirs: ", err.Error())
+		return err
+	}
 
 	println("pth is: ", hardlinkDestination, " for blob path: ", blobPath)
 	errV := cm.CephMount.Symlink(blobPath,hardlinkDestination)
 	if errV != nil {
 		println("error on symlinking is: ", errV.Error())
-		return err
+		return errV
 	}
 
 	return nil
 }
-

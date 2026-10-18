@@ -11,7 +11,6 @@ type countingWriter struct{
 
 
 func (c *countingWriter) Write(p []byte) (n int, err error) {
-	println("counting writer wrote", len(p))
 	n, err = c.writer.Write(p)
 	c.c += uint64(n)
 	return n, err
