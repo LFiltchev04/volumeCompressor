@@ -95,16 +95,17 @@ func (cm *CephMount) CompressSubvolume(subvolPath string, username string, dumpN
 	println("entered tarify?")
 
 	wrt := tar.NewWriter(&countingWriter)
-	
+
 	xxArr, err := cm.tarifyBfs(subvolPath, wrt, &countingWriter)
 	if err != nil {
 		println("Error in tarify top level", err.Error())
 		return err
 	}
 
-	
 	println("wrote so many entries in xxArr: ", len(xxArr))
-	cm.serializeHashIndex(xxArr, archvDir + "/archive.trash")
+	if err := cm.serializeHashIndex(xxArr, archvDir + "/archive.trash"); err != nil {
+		return fmt.Errorf("serialize hash index: %w", err)
+	}
 
 
 	if err := wrt.Close(); err != nil {
@@ -113,7 +114,6 @@ func (cm *CephMount) CompressSubvolume(subvolPath string, username string, dumpN
 	if err := writer.Close(); err != nil {
 		return fmt.Errorf("close archive writer: %w", err)
 	}
-	
 
 	println("left tarify")
 	return nil
@@ -124,7 +124,7 @@ func (cm *CephMount) CompressSubvolume(subvolPath string, username string, dumpN
 type xxHashStruct struct {
 		xxHashID [6]byte
 		fileSize uint64
-		recordLen uint16
+		recordLen uint64
 		offsetPos uint64
 		pathName string
 		
@@ -143,8 +143,6 @@ func (cm *CephMount) tarifyBfs(rootPath string, tarW *tar.Writer, writeRef *coun
 		return nil, fmt.Errorf("tar writer is nil")
 	}
 
-
-	
 	var xxHashFastLookup []xxHashStruct
 
 
@@ -158,7 +156,7 @@ func (cm *CephMount) tarifyBfs(rootPath string, tarW *tar.Writer, writeRef *coun
 			return fmt.Errorf("open dir %q: %w", currentPath, err)
 		}
 		defer dir.Close()
-		
+
 		dir.RewindDir()
 		for {
 			entry, err := dir.ReadDir()
@@ -195,7 +193,7 @@ func (cm *CephMount) tarifyBfs(rootPath string, tarW *tar.Writer, writeRef *coun
 					Typeflag: tar.TypeDir,
 					ModTime:  mtime,
 				}
-				
+
 				if err := tarW.WriteHeader(header); err != nil {
 					return fmt.Errorf("write dir header for %q: %w", childPath, err)
 				}
@@ -235,13 +233,12 @@ func (cm *CephMount) tarifyBfs(rootPath string, tarW *tar.Writer, writeRef *coun
 			xxHashTrunc := [6]byte{}
 			copy(xxHashTrunc[:], xxHashFull[:6])
 
-			strlenCast := uint16(len(childPath))
 			var hashmapEnty xxHashStruct
 			hashmapEnty = xxHashStruct{
 				xxHashID: xxHashTrunc,
 				fileSize: uint64(attrs.Size),
 				offsetPos: writeRef.GetCount(),
-				recordLen: strlenCast,
+				recordLen: uint64(len(childPath)),
 				pathName: childPath,
 			}
 			xxHashFastLookup = append(xxHashFastLookup, hashmapEnty)
@@ -255,11 +252,10 @@ func (cm *CephMount) tarifyBfs(rootPath string, tarW *tar.Writer, writeRef *coun
 				return fmt.Errorf("copy file contents for %q: %w", childPath, err)
 			}
 
-			
 			if err := file.Close(); err != nil {
 				return fmt.Errorf("close file %q: %w", childPath, err)
 			}
-			
+
 		}
 
 		return nil
