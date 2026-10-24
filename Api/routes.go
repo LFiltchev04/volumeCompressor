@@ -10,6 +10,10 @@ func Listener() {
 	mux.HandleFunc("POST /snapshotState", doSnapshot)
 	mux.HandleFunc("POST /repoPush", doDistribution)
 
+
+	//the K8s stuff is here
+	mux.HandleFunc("POST /createEnv", doCreateEnv)
+
 	//mux.HandleFunc("POST /advanceTag", doTagAdv)
 	//mux.HandleFunc("POST /makeSubenv", doMakeEnv)
 	
