@@ -118,6 +118,7 @@ func (cm *CephMount) MakeRepo(name string, baseImage string)error{
 	log.Println("Done writing link")
 
 
+	
 	//that is basically the whole thing? 
 	return nil
 }

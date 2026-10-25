@@ -8,6 +8,7 @@ import (
 
 	k "compressor/kubWatcher"
 	s "compressor/CephStorage"
+	c "compressor/Configuration"
 )
 
 
@@ -60,10 +61,15 @@ func doCreateEnv(w http.ResponseWriter, r *http.Request) {
 	log.Println("Created k8s resources, distribution backend management to be done here")
 
 
+	globalConf := c.Global.GlobalMnt
+	var mntWrap s.CephMount
+	mntWrap.CephMount = &globalConf
 
-
-
-
+	err = mntWrap.MakeRepo(req.EnvName, req.BaseImage)
+	if err != nil {
+		http.Error(w, "repo creation failed", 500)
+		log.Printf("Function exited with error: %s\n", err.Error())
+	}
 
 	http.Error(w, "done", 200) //is OK, proceed
 }
