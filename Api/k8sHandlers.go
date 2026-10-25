@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 
 	k "compressor/kubWatcher"
+	s "compressor/CephStorage"
 )
 
 
@@ -58,4 +59,11 @@ func doCreateEnv(w http.ResponseWriter, r *http.Request) {
 
 	log.Println("Created k8s resources, distribution backend management to be done here")
 
+
+
+
+
+
+
+	http.Error(w, "done", 200) //is OK, proceed
 }
