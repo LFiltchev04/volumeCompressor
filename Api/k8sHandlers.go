@@ -28,8 +28,11 @@ func doCreateEnv(w http.ResponseWriter, r *http.Request) {
 	buf.ReadFrom(r.Body)
 	var req jsonReqSchema
 
-	json.Unmarshal(buf.Bytes(), &req)
-
+	err := json.Unmarshal(buf.Bytes(), &req)
+	if err != nil {
+		http.Error(w, "bad json", 400)
+		return
+	}
 
 	
 	result, err := c.Global.InformConfig.NamespaceExists(req.EnvName)

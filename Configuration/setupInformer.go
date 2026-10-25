@@ -18,32 +18,37 @@ func (ic *InformerConfig) NamespaceExists(ns string) (bool, error) {
 
 	ctx := context.TODO()
 
+	var flag bool
+	flag = true
 	//verifies namespace
 	_, err := ic.ClientSet.CoreV1().Namespaces().Get(ctx, ns, metav1.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			return false, nil
+			flag = true
 		}
-		return false, err
+		return false, nil
 	}
 
 	//verifies headless service
 	_, err = ic.ClientSet.CoreV1().Services(ns).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			return false, nil
+			flag = false
 		}
-		return false, err
+		return false, nil
 	}
 
 
 	//verifies PVC exists, only one PV per environment
 	_, err = ic.ClientSet.CoreV1().PersistentVolumeClaims(ns).List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return false, err
+		if apierrors.IsNotFound(err) {
+			flag = false
+		}
+		return false, nil
 	}
 
-	return true, nil
+	return flag, nil
 }
 
 func (ic *InformerConfig) CreateNamespace(ns string) error {
