@@ -3,7 +3,6 @@ package main
 import (
 	"compressor/Api"
 	"compressor/Configuration"
-
 ) 
 	
 
@@ -14,6 +13,8 @@ func main() {
 	//its the yaml config
 	fixThis = "./srvConfig.yaml"
 	
+	
+
 	Configuration.Global.InitConfig(fixThis)
 
 	Api.Listener()	

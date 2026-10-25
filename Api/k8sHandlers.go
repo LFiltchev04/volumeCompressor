@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"encoding/json"
 
-	k "compressor/kubWatcher"
 	s "compressor/CephStorage"
 	c "compressor/Configuration"
 )
@@ -18,7 +17,6 @@ type jsonReqSchema struct{
 	BaseImage string `json:"baseImage"`
 }
 	
-var ic = &k.InformerConfig{}
 
 //does env creation
 func doCreateEnv(w http.ResponseWriter, r *http.Request) {
@@ -33,7 +31,8 @@ func doCreateEnv(w http.ResponseWriter, r *http.Request) {
 	json.Unmarshal(buf.Bytes(), &req)
 
 
-	result, err := ic.NamespaceExists(req.EnvName)
+	
+	result, err := c.Global.InformConfig.NamespaceExists(req.EnvName)
 	if err != nil {
 		log.Println("ns check error failed with", req.EnvName, err)
 		http.Error(w, "ns check failed", 500)
@@ -50,7 +49,7 @@ func doCreateEnv(w http.ResponseWriter, r *http.Request) {
 		log.Println("ns not exists")
 		//creates ns
 
-		err := ic.CreateNamespace(req.EnvName)
+		err := c.Global.InformConfig.CreateNamespace(req.EnvName)
 		if err != nil {
 			http.Error(w, "create ns failed", 500)
 			return

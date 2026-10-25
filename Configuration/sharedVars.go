@@ -3,12 +3,36 @@ package Configuration
 import (
 	"fmt"
 	"os"
+	"log"
 
 	"github.com/ceph/go-ceph/cephfs"
 	"github.com/go-yaml/yaml"
-
-	
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/clientcmd"
 )
+
+type InformerConfig struct {
+	ClientSet *kubernetes.Clientset
+}
+
+// has to be ran on init to start up the listener
+func (ic *InformerConfig) SetupInformer(url string, kubeconfig string) error {
+	log.Println("Setting up informer")
+
+	config, err := clientcmd.BuildConfigFromFlags(url, kubeconfig)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	clientSet, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		log.Fatalf("Failed to create clientset: %v", err)
+		return err
+	}
+	ic.ClientSet = clientSet
+
+	return nil
+}
 
 
 type ReadableConfig struct{
@@ -17,11 +41,13 @@ type ReadableConfig struct{
 	ClusterKey string `yaml:"ClusterKey"`
 	FilesystemID string `yaml:"FilesystemID"`
 	DistributionPV string `yaml:"DistributionPV"`
+	KubeconfigFile string `yaml:"KubeconfigFile"`
 }
 
 type GlobalConfig struct {
 	BaseConf ReadableConfig
 	GlobalMnt cephfs.MountInfo
+	InformConfig InformerConfig
 }
 
 
@@ -49,6 +75,11 @@ func (c *GlobalConfig) InitConfig(pathToConf string) error {
 	glbMnt.SetConfigOption("name", externConf.ClusterName)
 	glbMnt.SetConfigOption("key", externConf.ClusterKey)
 	glbMnt.Mount()
+
+	err = c.InformConfig.SetupInformer("", c.BaseConf.KubeconfigFile)
+	if err != nil {
+		log.Println("err setting up informer", err)
+	}
 	
 	c.GlobalMnt = *glbMnt
 	return nil
