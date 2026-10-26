@@ -26,7 +26,7 @@ type Storage interface {
 }
 
 func (cm *CephMount) CephRead(path string) (io.ReadCloser, error) {
-	return cm.CephMount.Open(path, 0777, uint32(os.O_RDONLY))
+	return cm.CephMount.Open(path, os.O_RDONLY, 0)
 }
 
 func (cm *CephMount) CephWrite(path string) (io.WriteCloser, error) {

@@ -45,9 +45,6 @@ func doCreateEnv(w http.ResponseWriter, r *http.Request) {
 	if result {
 		log.Println("ns exists")
 
-		//success
-		http.Error(w, "ns exists", 200)
-
 	} else {
 		log.Println("ns not exists")
 		//creates ns
@@ -57,7 +54,6 @@ func doCreateEnv(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "create ns failed", 500)
 			return
 		}
-		http.Error(w, "ns exists", 200)
 	}
 
 	log.Println("Created k8s resources, distribution backend management to be done here")
@@ -71,6 +67,7 @@ func doCreateEnv(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "repo creation failed", 500)
 		log.Printf("Function exited with error: %s\n", err.Error())
+		return
 	}
 
 	http.Error(w, "done", 200) //is OK, proceed

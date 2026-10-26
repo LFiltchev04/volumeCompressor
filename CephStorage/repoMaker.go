@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"log"
+	"path"
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
@@ -17,45 +18,62 @@ func (cm *CephMount) MakeRepo(name string, baseImage string)error{
 	pvBase := Config.Global.BaseConf.DistributionPV
 
 	//get the base image and parse it
-	baseJsonObj := manifestRevisionLinkPathSpec{
+	baseJsonObj := manifestRevisionsPathSpec{
 		name: baseImage,
-		revision: "latest", //hardcodes the version pointer spec
 	}
 	
-	baseJsonPathR, err := PathFor(baseJsonObj)
+	baseRepoPath, err := PathFor(baseJsonObj)
 	if err != nil {
 		log.Printf("Errored out on path generation %s", err.Error())
 		return err
 	}
-	log.Println("Got base path", baseJsonPathR)
+	log.Println("Got base path", baseRepoPath)
 
 
-	//this is just for
-	baseJsonPathA := pvBase + baseImage //no slasl? I get why people use objects for this stuff now huh
-	log.Println("Got alt path", baseJsonPathA)
-
-	jsonFilePtr := baseJsonPathA + "/link"
-	rdr, err := cm.CephRead(jsonFilePtr)
+	//must have one repo entry only
+	baseLinkPath := pvBase + baseRepoPath
+	revisionDir, err := cm.CephMount.OpenDir(baseLinkPath + "/sha256")
 	if err != nil {
+		log.Printf("Failed to open revisions directory %q: %s", baseLinkPath, err)
 		return err
 	}
-	buf := new(bytes.Buffer)
-	buf.ReadFrom(rdr)
-	log.Println("Read link", buf.String())
-	linkString := buf.String()
+	defer revisionDir.Close()
+
+	var manifestHash string
+	for {
+		entry, err := revisionDir.ReadDir()
+		if err != nil {
+			log.Printf("Failed to read revisions directory %q: %s", baseLinkPath, err)
+			return err
+		}
+		if entry == nil {
+			break
+		}
+		if entry.Name() == "." || entry.Name() == ".." {
+			continue
+		}
+		log.Println("Revision directory entry:", entry.Name())
+		manifestHash = entry.Name()
+	}
+
+
+
+	
+	
 	
 
 
-	dgst, err := digest.Parse(linkString)
+	dgst, err := digest.Parse("sha256:"+manifestHash)
 	if err != nil {
 		log.Printf("Digest parse of link string failed %s\n", err.Error())
+		return err
 	}
 	
-	manifestJsonLink := layerLinkPathSpec{
-		name: "eh?",
+	//gets the blob of the json link directly
+	manifestJsonLink := blobDataPathSpec{
 		digest: dgst,
-
 	}
+	
 	relPathJson, err := PathFor(manifestJsonLink)
 	if err != nil {
 		log.Printf("Couldnt parse the lookup string for the json %s", err.Error())
@@ -63,10 +81,11 @@ func (cm *CephMount) MakeRepo(name string, baseImage string)error{
 	}
 	log.Println("Got JSON path", relPathJson)
 
-	fullPath := pvBase + "/" + relPathJson
+	fullPath := pvBase + relPathJson
 	buffer := new(bytes.Buffer)
-	rdr, err = cm.CephRead(fullPath)
+	rdr, err := cm.CephRead(fullPath)
 	if err != nil {
+		log.Printf("full json path: %s", fullPath)
 		log.Printf("couldnt read the json blob with error: %s", err.Error())
 		return err
 	}
@@ -85,7 +104,7 @@ func (cm *CephMount) MakeRepo(name string, baseImage string)error{
 	//this now appends the manifest to the new repo
 	newRepoPath := manifestRevisionLinkPathSpec{
 		name: name,
-		revision: "v0",
+		revision: dgst,
 	}
 	relPathNew, err := PathFor(newRepoPath)
 	if err != nil {
@@ -93,7 +112,7 @@ func (cm *CephMount) MakeRepo(name string, baseImage string)error{
 	}
 	log.Println("New repo path", relPathNew)
 
-	fullNewPath := pvBase + "/" + relPathNew
+	fullNewPath := pvBase + path.Dir(relPathNew)
 	log.Println("Full new path", fullNewPath)
 
 	err = cm.CephMount.MakeDirs(fullNewPath, 0766)
@@ -111,7 +130,7 @@ func (cm *CephMount) MakeRepo(name string, baseImage string)error{
 
 
 	log.Println("Wrote link")
-	_, err = wrtr.Write([]byte(linkString))
+	_, err = wrtr.Write([]byte(dgst.String()))
 	if err != nil {
 		return err
 	}
