@@ -85,7 +85,7 @@ func (ic *InformerConfig) CreateNamespace(ns string) error {
     	Spec: corev1.ServiceSpec{
         	ClusterIP: "None", 
         	Selector: map[string]string{
-            	"type": "workspace",
+            	"ssh": "true",
         	},
     	},
 	}

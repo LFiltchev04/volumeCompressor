@@ -5,6 +5,9 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
+
+	"github.com/ceph/go-ceph/cephfs"
 
 	"github.com/gorilla/mux"
 
@@ -220,4 +223,67 @@ func doManifestOnly(resp http.ResponseWriter, req *http.Request){
 	}
 
 	resp.WriteHeader(200)
+}
+
+
+
+type indexeReq struct {
+	RepoName string `json:"repoName"`
+	TagVersion string `json:"tagVersion"`
+
+}
+//fetches the index blobs for a repo
+func doGetIndexList(resp http.ResponseWriter, req *http.Request){
+	index := indexeReq{}
+	json.NewDecoder(req.Body).Decode(&index)
+	println("repo: ", index.RepoName)
+	
+
+}
+
+
+type indexBlobReq struct {
+	RepoName string `json:"repoName"`
+	BlobID string `json:"blobID"`
+}
+func doGetIndexBlob(resp http.ResponseWriter, req *http.Request){
+	reqBody, _ := io.ReadAll(req.Body)
+	var jsonInstance indexBlobReq
+	json.Unmarshal(reqBody, &jsonInstance)
+	println("blob: ", jsonInstance.BlobID)
+
+
+	globalConf := Configuration.Global.GlobalMnt
+	var mntWrap CephStorage.CephMount
+	mntWrap.CephMount = &globalConf
+
+	symlinkPath, err := mntWrap.GetBlobIndex(jsonInstance.RepoName, jsonInstance.BlobID)
+	if err != nil {
+		println("Error: ", err.Error())
+		resp.WriteHeader(500)
+		return
+	}
+	println("symlink: ", symlinkPath)
+
+
+	reader, err := mntWrap.CephRead(symlinkPath)
+	if err != nil {
+		resp.WriteHeader(500)
+		return
+	}
+	defer reader.Close()
+
+	// Statx follows the symlink (no AtSymlinkNofollow), so this is the real file's size
+	stat, err := mntWrap.CephMount.Statx(symlinkPath, cephfs.StatxSize, 0)
+	if err != nil {
+		resp.WriteHeader(500)
+		return
+	}
+	endfileSize := int64(stat.Size)
+
+	resp.Header().Set("Content-Type", "application/octet-stream")
+	resp.Header().Set("Content-Length", strconv.FormatInt(endfileSize, 10))
+	resp.WriteHeader(200)
+	io.Copy(resp, reader)
+
 }

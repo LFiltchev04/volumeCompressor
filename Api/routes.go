@@ -13,9 +13,13 @@ func Listener() {
 
 	//the K8s stuff is here
 	mux.HandleFunc("POST /createEnv", doCreateEnv)
+	//mux.HandleFunc("POST /deleteEnv", doDeleteEnv)
 
+
+
+	mux.HandleFunc("GET /repoIndexBlobs", doGetIndexList)
+	mux.HandleFunc("GET /indexBlob", doHealthz)
 	//mux.HandleFunc("POST /advanceTag", doTagAdv)
-	//mux.HandleFunc("POST /makeSubenv", doMakeEnv)
 	
 	//mux.HandleFunc("/healthz/{service:[a-zA-Z0-9.-]+}", doHealthz)
 	http.ListenAndServe(":3001", mux)
