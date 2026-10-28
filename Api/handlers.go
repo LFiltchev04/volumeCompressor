@@ -58,6 +58,11 @@ func doTest(resp http.ResponseWriter, req *http.Request){
 }
 
 
+
+
+
+
+
 func doSnapshot(resp http.ResponseWriter, req *http.Request) {
 	bdyByts, err := io.ReadAll(req.Body)
 	if err != nil {
@@ -69,11 +74,12 @@ func doSnapshot(resp http.ResponseWriter, req *http.Request) {
 		resp.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-///IMPORTANT!!!!!!
+	
+	///IMPORTANT!!!!!!
 	type postBody struct {
-		DumpName string `json:"DumpName"` 
-		EnvName string `json:"EnvName"`
-		VolumePath string `json:"VolumePath"`
+		RepoName string `json:"repoName"`
+		Version string `json:"version"`
+		VolumePath string `json:"volumePath"`
 	}
 
 	var postedData postBody
@@ -86,19 +92,38 @@ func doSnapshot(resp http.ResponseWriter, req *http.Request) {
 	var mntWrap CephStorage.CephMount
 	mntWrap.CephMount = &globalConf
 
-	mntWrap.CompressSubvolume(postedData.VolumePath, postedData.EnvName, postedData.DumpName)
-	VolumePath := postedData.VolumePath
-	DumpName := postedData.DumpName
+	mntWrap.CompressSubvolume(postedData.VolumePath, postedData.Version)
+	VolumePath := postedData.VolumePath	
+	
+	//hardlinks it from the PV into the redable directory
+	hash, err := mntWrap.HardlinkBlob(VolumePath + "/arch/" + postedData.Version + ".tar", postedData.RepoName)
+	if err != nil {
+		println("hardlink err: ", err.Error())
+	}
+	println("hash is: ", hash)
 
+	//adds a new manifest tapped to the repo name
 
-	//for now i am assuming that the path is right, will see
+	mFestOld, err := mntWrap.LoadManifest(postedData.RepoName)
+	if err != nil {
+		println("load manifest err: ", err.Error())
+		return
+	}
+
+	//gotta pull the size out too
+	CephStorage.AddLayer(postedData.RepoName,postedData.Version, hash, -10, *mFestOld)
+
+	mntWrap.WriteToLayers(postedData.RepoName, postedData.Version, hash)
 	
 	
-	mntWrap.HardlinkBlob(VolumePath + "/arch/" + DumpName, DumpName, postedData.EnvName)
-
 	resp.WriteHeader(http.StatusOK)
 	_, _ = resp.Write([]byte("ok"))
 }
+
+
+
+
+
 
 func doHealthz(resp http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
@@ -166,7 +191,7 @@ func doDistribution(resp http.ResponseWriter, req *http.Request){
 
 	var cMnt CephStorage.CephMount
 	cMnt.CephMount = &Configuration.Global.GlobalMnt
-	cMnt.HardlinkBlob(rawBlobPath, rawBlobPath, jsonInstance.Username)
+	cMnt.HardlinkBlob(rawBlobPath, jsonInstance.VolumePath)
 
 }
 

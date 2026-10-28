@@ -16,9 +16,7 @@ func Listener() {
 	//mux.HandleFunc("POST /deleteEnv", doDeleteEnv)
 
 
-
 	mux.HandleFunc("GET /repoIndexBlobs", doGetIndexList)
-	mux.HandleFunc("GET /indexBlob", doHealthz)
 	//mux.HandleFunc("POST /advanceTag", doTagAdv)
 	
 	//mux.HandleFunc("/healthz/{service:[a-zA-Z0-9.-]+}", doHealthz)

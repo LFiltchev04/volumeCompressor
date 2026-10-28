@@ -57,12 +57,6 @@ func (cm *CephMount) MakeRepo(name string, baseImage string)error{
 	}
 
 
-
-	
-	
-	
-
-
 	dgst, err := digest.Parse("sha256:"+manifestHash)
 	if err != nil {
 		log.Printf("Digest parse of link string failed %s\n", err.Error())
@@ -100,6 +94,7 @@ func (cm *CephMount) MakeRepo(name string, baseImage string)error{
 
 	log.Println("Manifest loaded")
 
+	
 
 	//this now appends the manifest to the new repo
 	newRepoPath := manifestRevisionLinkPathSpec{
