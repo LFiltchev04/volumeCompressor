@@ -102,6 +102,8 @@ func (cm *CephMount) CompressSubvolume(subvolPath string, version string) error 
 		return err
 	}
 
+	countingWriter.GetCount()
+
 	println("wrote so many entries in xxArr: ", len(xxArr))
 	if err := cm.serializeHashIndex(xxArr, archvDir + "/" + version + ".idx"); err != nil {
 		return fmt.Errorf("serialize hash index: %w", err)

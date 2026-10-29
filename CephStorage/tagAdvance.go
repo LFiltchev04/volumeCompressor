@@ -43,7 +43,7 @@ func (cm *CephMount) AdvanceTag(tagName string, envName string ,manifest *v1.Man
 	file.Close()
 
 	//ensures the manifest blob is written
-	cm.WriteBlob(&jsonMfst)
+	cm.WriteBlob(&jsonMfst, envName)
 	
 	
 	//sets the topmost file pointer to this thing

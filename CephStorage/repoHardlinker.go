@@ -4,16 +4,27 @@ import (
 	"compressor/Configuration"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"io"
 	"path"
 	"strings"
 
 	"os"
 	"fmt"
+	"syscall"
 
 	"github.com/ceph/go-ceph/cephfs"
 	"github.com/opencontainers/go-digest"
 )
+
+func isAlreadyExists(err error) bool {
+	if os.IsExist(err) {
+		return true
+	}
+
+	var cephErr interface{ ErrorCode() int }
+	return errors.As(err, &cephErr) && cephErr.ErrorCode() == -int(syscall.EEXIST)
+}
 
 //this method is likely pretty ineffective, will do a second trip to the repo to fetch it out and hash it adter a write, have to look at alternatives
 func (cm* CephMount)blobHasher(fileLocation string)(string, error){
@@ -34,12 +45,11 @@ func (cm* CephMount)blobHasher(fileLocation string)(string, error){
 	hasher := sha256.New()
 	println("about to fork over: ", fSize.Size, " bytes")
 	io.CopyN(hasher, file, int64(fSize.Size))
-	
+
 	byteDump := hasher.Sum(nil)
 	println("hash is: ", hex.EncodeToString(byteDump))
 	return fmt.Sprintf("%x", byteDump), nil
 }
-
 
 // ensureDir avoids ceph_mkdirs (which blocks here) by stat-ing first and only
 // creating the components that are actually missing.
@@ -57,7 +67,6 @@ func (cm *CephMount) ensureDir(dir string) error {
 		}
 		println("creating dir: ", cur)
 		if err := cm.CephMount.MakeDir(cur, 0755); err != nil {
-			// a concurrent creator or a stat race is fine as long as it exists now
 			if _, serr := cm.CephMount.Statx(cur, cephfs.StatxMode, 0); serr != nil {
 				return fmt.Errorf("mkdir %q: %w", cur, err)
 			}
@@ -72,9 +81,7 @@ func (cm* CephMount)HardlinkBlob(blobPath string, repoName string)(string, error
 
 	//first have to actually write the blob to the blob store
 
-
 	var retHash string
-
 
 	println("Hardlinking blob for path: ", blobPath)
 	hash, err := cm.blobHasher(blobPath)
@@ -103,7 +110,6 @@ func (cm* CephMount)HardlinkBlob(blobPath string, repoName string)(string, error
 		return "", err
 	}
 
-
 	linkPath := Configuration.Global.BaseConf.DistributionPV + pth
 	println("//////link path is: ", linkPath)
 	pDir := path.Dir(linkPath)
@@ -122,7 +128,6 @@ func (cm* CephMount)HardlinkBlob(blobPath string, repoName string)(string, error
 	}
 	defer writeHandle.Close()
 
-
 	retHash = dgst.String()
 
 	linkContent := retHash
@@ -132,8 +137,7 @@ func (cm* CephMount)HardlinkBlob(blobPath string, repoName string)(string, error
 		println("error writing link: ", err.Error())
 		return "", err
 	}
-	
-	
+
 	pth, _ = PathFor(blobDataPathSpec{
 		digest: dgst,
 	})
@@ -152,10 +156,11 @@ func (cm* CephMount)HardlinkBlob(blobPath string, repoName string)(string, error
 	if errV != nil {
 		println("error on symlinking is: ", errV.Error())
 
-		if os.IsExist(errV) {
-			return "", nil
+		if isAlreadyExists(errV) {
+			println("symlink exists, ignoring")
+		} else {
+			return "", errV
 		}
-		return "",errV
 	}
 
 	return retHash, nil

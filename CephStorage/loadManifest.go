@@ -52,8 +52,9 @@ func (cm *CephMount) LoadManifest(repoName string)(*ocispec.Manifest, error){
 		return nil, fmt.Errorf("Error on iterating the repo dir")
 	}
 
-	dgst, err := digest.Parse(manifestHash)
+	dgst, err := digest.Parse("sha256:"+manifestHash)
 	if err != nil {
+		println("Failed to parse digest")
 		return nil, err
 	}
 	

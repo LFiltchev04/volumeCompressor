@@ -11,7 +11,7 @@ import (
 )
 
 //writes a blob entry and links it independently, not recomended to stream bulk data from here
-func (cm *CephMount) WriteBlob(data *[]byte) error {
+func (cm *CephMount) WriteBlob(data *[]byte, repoName string) (string, error) {
 	basePath := Configuration.Global.BaseConf.DistributionPV
 	
 
@@ -26,14 +26,14 @@ func (cm *CephMount) WriteBlob(data *[]byte) error {
 	file, err := cm.CephMount.Open(fullPath, os.O_CREATE|os.O_WRONLY, 0644)
 	if(err!=nil){
 		defer file.Close()
-		return err
+		return "", err
 	}
 
 	//this can take a while for large blobs
 	_, err = file.Write(*data)
 	if err != nil {
 		defer file.Close()
-		return err
+		return "", err
 	}
 
 	defer file.Close()
@@ -42,7 +42,7 @@ func (cm *CephMount) WriteBlob(data *[]byte) error {
 	//this is only for the linkfile to go with the blobs
 
 	linkFilePath, _ := PathFor(layerLinkPathSpec{
-		name: "linkEXT", //i dont know why this exists, it is never asked for
+		name: repoName, //i dont know why this exists, it is never asked for
 		digest: dgst,
 	})
 	println("security check on the name stuff, the unknown nameEXT property is set here, the full path was: ", linkFilePath)
@@ -52,15 +52,15 @@ func (cm *CephMount) WriteBlob(data *[]byte) error {
 	fileL, err := cm.CephMount.Open(fullLinkfilePath, os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		defer fileL.Close()
-		return err
+		return "", err
 	}
 
 	_, err = fileL.Write([]byte{})
 	if err != nil {
 		defer fileL.Close()
-		return err
+		return "", err
 	}
 
 	defer fileL.Close()
-	return nil
+	return string(hash[:]), nil
 }

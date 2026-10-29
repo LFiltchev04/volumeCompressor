@@ -13,7 +13,7 @@ import (
 
 	"compressor/CephStorage"
 	"compressor/Configuration"
-	help "compressor/Helpers"
+	//help "compressor/Helpers"
 )
 
 func doTest(resp http.ResponseWriter, req *http.Request){
@@ -111,11 +111,27 @@ func doSnapshot(resp http.ResponseWriter, req *http.Request) {
 	}
 
 	//gotta pull the size out too
-	CephStorage.AddLayer(postedData.RepoName,postedData.Version, hash, -10, *mFestOld)
+	mFestNew, err := CephStorage.AddLayer(postedData.RepoName,postedData.Version, hash, -10, *mFestOld)
+	if err != nil {
+		println("add layer err: ", err.Error())
+	}
 
-	mntWrap.WriteToLayers(postedData.RepoName, postedData.Version, hash)
+	err = mntWrap.WriteToLayers(postedData.RepoName, postedData.Version, hash)
+	if err != nil {
+		println("write to layers err: ", err.Error())
+	}
+
+	byteCast, err := json.Marshal(mFestNew)
+	if err != nil {
+		println("marshal err: ", err.Error())
+	}
+
+	hash, err = mntWrap.WriteBlob(&byteCast, postedData.RepoName)
+	if err != nil {
+		println("write blob err: ", err.Error())
+	}
 	
-	
+
 	resp.WriteHeader(http.StatusOK)
 	_, _ = resp.Write([]byte("ok"))
 }
@@ -196,6 +212,7 @@ func doDistribution(resp http.ResponseWriter, req *http.Request){
 }
 
 
+/*
 func doManifestOnly(resp http.ResponseWriter, req *http.Request){
 	reqBody, err := io.ReadAll(req.Body)
 	if err != nil {
@@ -250,7 +267,7 @@ func doManifestOnly(resp http.ResponseWriter, req *http.Request){
 	resp.WriteHeader(200)
 }
 
-
+*/
 
 type indexeReq struct {
 	RepoName string `json:"repoName"`
