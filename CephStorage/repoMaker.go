@@ -14,7 +14,7 @@ import (
 )
 
 //needs to have an already existing base image
-func (cm *CephMount) MakeRepo(name string, baseImage string)error{
+func (cm *CephMount) MakeRepo(name string, baseImage string, tagName string)error{
 	pvBase := Config.Global.BaseConf.DistributionPV
 
 	//get the base image and parse it

@@ -15,6 +15,7 @@ import (
 type jsonReqSchema struct{
 	EnvName string `json:"envName"`
 	BaseImage string `json:"baseImage"`
+	BaseTag string `json:"baseTag"`
 }
 	
 
@@ -63,7 +64,7 @@ func doCreateEnv(w http.ResponseWriter, r *http.Request) {
 	var mntWrap s.CephMount
 	mntWrap.CephMount = &globalConf
 
-	err = mntWrap.MakeRepo(req.EnvName, req.BaseImage)
+	err = mntWrap.MakeRepo(req.EnvName, req.BaseImage, req.BaseTag)
 	if err != nil {
 		http.Error(w, "repo creation failed", 500)
 		log.Printf("Function exited with error: %s\n", err.Error())

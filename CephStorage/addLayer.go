@@ -10,8 +10,8 @@ import (
 
 
 
-//formats the new manifest to allow complete 
-func AddLayer(repoName string, tagName string, hash string, size int64, oldMfest ocispec.Manifest) (ocispec.Manifest,error) {
+//formats the new manifest to allow the snapshotter to lazy pull layers
+func AddLayer(repoName string, tagName string, volPath string, hash string, size int64, oldMfest ocispec.Manifest) (ocispec.Manifest,error) {
 
 
 
@@ -19,12 +19,17 @@ func AddLayer(repoName string, tagName string, hash string, size int64, oldMfest
 		Digest: digest.FromString(hash),
 		Size: size,
 		Annotations: map[string]string{
-			"com.LazyPull.blobHash": hash,
+			"io.containerd/snapshot/hash/": hash,
+			"io.containerd/snapshot/version/": tagName,
 		},
 	})
 
 
-
+	if oldMfest.Annotations == nil {
+		oldMfest.Annotations = map[string]string{}
+	}
+	
+	oldMfest.Annotations["io.containerd/snapshot/envVolPath/"] = volPath
 
 	return oldMfest,nil
 

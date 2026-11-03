@@ -79,6 +79,7 @@ func doSnapshot(resp http.ResponseWriter, req *http.Request) {
 	type postBody struct {
 		RepoName string `json:"repoName"`
 		Version string `json:"version"`
+		NewVersion string `json:"newVersion"`
 		VolumePath string `json:"volumePath"`
 	}
 
@@ -92,45 +93,80 @@ func doSnapshot(resp http.ResponseWriter, req *http.Request) {
 	var mntWrap CephStorage.CephMount
 	mntWrap.CephMount = &globalConf
 
-	mntWrap.CompressSubvolume(postedData.VolumePath, postedData.Version)
+	sz, err := mntWrap.CompressSubvolume(postedData.VolumePath, postedData.Version)
+	if err != nil {
+		println("compress err: ", err.Error())
+		http.Error(resp, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	szc := int64(sz)
+
 	VolumePath := postedData.VolumePath	
 	
 	//hardlinks it from the PV into the redable directory
 	hash, err := mntWrap.HardlinkBlob(VolumePath + "/arch/" + postedData.Version + ".tar", postedData.RepoName)
 	if err != nil {
 		println("hardlink err: ", err.Error())
+		http.Error(resp, err.Error(), http.StatusInternalServerError)
+		return
 	}
 	println("hash is: ", hash)
 
+	//_, err = mntWrap.HardlinkBlob(VolumePath + "/arch/" + postedData.NewVersion + ".idx", postedData.RepoName)
+	//if err != nil {
+	//	println("hardlink err for idx file: ", err.Error())
+	//	http.Error(resp, err.Error(), http.StatusInternalServerError)
+	//	return
+	//}
+
 	//adds a new manifest tapped to the repo name
 
-	mFestOld, err := mntWrap.LoadManifest(postedData.RepoName)
+	println("\n\n\n\nopening mfest\n\n\n\n")
+	mFestOld, err := mntWrap.LoadManifest(postedData.RepoName, postedData.Version)
 	if err != nil {
 		println("load manifest err: ", err.Error())
+		http.Error(resp, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	println("\n\n\n\nadding layer\n\n\n\n")
 	//gotta pull the size out too
-	mFestNew, err := CephStorage.AddLayer(postedData.RepoName,postedData.Version, hash, -10, *mFestOld)
+	mFestNew, err := CephStorage.AddLayer(postedData.RepoName, postedData.Version, postedData.VolumePath, hash, szc, *mFestOld)
 	if err != nil {
 		println("add layer err: ", err.Error())
+		http.Error(resp, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
-	err = mntWrap.WriteToLayers(postedData.RepoName, postedData.Version, hash)
+	println("\n\n\n\nwriting to layers\n\n\n\n")
+	err = mntWrap.WriteToLayers(postedData.RepoName, hash)
 	if err != nil {
 		println("write to layers err: ", err.Error())
+		http.Error(resp, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	byteCast, err := json.Marshal(mFestNew)
 	if err != nil {
 		println("marshal err: ", err.Error())
+		http.Error(resp, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
-	hash, err = mntWrap.WriteBlob(&byteCast, postedData.RepoName)
+	println("\n\n\n\nwriting blobs\n\n\n\n")
+	hash, err = mntWrap.WriteBlob(byteCast, postedData.RepoName, postedData.NewVersion)
 	if err != nil {
 		println("write blob err: ", err.Error())
+		http.Error(resp, err.Error(), http.StatusInternalServerError)
+		return
 	}
-	
+
+
+	//have to write the tag
+	err = mntWrap.WriteNewTag(postedData.NewVersion, postedData.RepoName, hash)
+	if err != nil {
+		println("write new tag err: ", err.Error())
+	}
 
 	resp.WriteHeader(http.StatusOK)
 	_, _ = resp.Write([]byte("ok"))

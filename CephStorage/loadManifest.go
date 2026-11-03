@@ -2,28 +2,39 @@ package CephStorage
 
 import (
 	cnfg "compressor/Configuration"
+	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
-	"encoding/json"
 
 	digest "github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
 
-func (cm *CephMount) LoadManifest(repoName string)(*ocispec.Manifest, error){
+func (cm *CephMount) LoadManifest(repoName string, tagName string)(*ocispec.Manifest, error){
 	
-	
-	rPath, err := PathFor(manifestRevisionsPathSpec{name: repoName})
+
+
+	pt := manifestTagIndexPathSpec{
+		name: repoName,
+		tag: tagName,
+	}
+
+	rPath, err := PathFor(pt)
 	if err != nil {
+
+		log.Printf("Errored on tag build path")
 		return nil, err
 	}
-	
-	
+
+
 	rPath += "/sha256/"
 	fPath := cnfg.Global.BaseConf.DistributionPV + rPath
 	println("Opening path:", fPath)
+	cm.ensureDir(fPath)
+
 	revisionDir, err := cm.CephMount.OpenDir(fPath)
 	if err != nil {
 		return nil, err

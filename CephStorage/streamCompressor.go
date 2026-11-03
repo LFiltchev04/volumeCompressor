@@ -14,7 +14,6 @@ import (
 	cephfs "github.com/ceph/go-ceph/cephfs"
 )
 
-var tempRootDir string
 
 type CephMount struct {
 	CephMount *cephfs.MountInfo
@@ -69,7 +68,7 @@ func tarTypeFlag(mode uint16) (byte, error) {
 	}
 }
 
-func (cm *CephMount) CompressSubvolume(subvolPath string, version string) error {
+func (cm *CephMount) CompressSubvolume(subvolPath string, version string) (uint64, error) {
 
 	archvDir := path.Join(subvolPath, "arch")
 	errMd := cm.CephMount.MakeDir(archvDir, uint32(755))
@@ -80,7 +79,7 @@ func (cm *CephMount) CompressSubvolume(subvolPath string, version string) error 
 	f, err:= cm.CephMount.Open(archvDir+"/"+version+".tar", os.O_CREATE, 0644)
 	if err != nil {
 		println("error opening tar file: ", err.Error())
-		return err
+		return 0, err
 	}
 	f.Close()
 	writer, errWrite := cm.CephWrite(archvDir+"/"+version+".tar")
@@ -89,7 +88,7 @@ func (cm *CephMount) CompressSubvolume(subvolPath string, version string) error 
 	println("In compress, values are: ", subvolPath)
 	if errWrite != nil {
 		println("cephWrite error: ", errWrite.Error())
-		return errors.New("Assigning a write object for the compressor failed")
+		return 0, errors.New("Assigning a write object for the compressor failed")
 	}
 	println("entered tarify?")
 
@@ -99,26 +98,26 @@ func (cm *CephMount) CompressSubvolume(subvolPath string, version string) error 
 	xxArr, err := cm.tarifyBfs(subvolPath, wrt, &countingWriter)
 	if err != nil {
 		println("Error in tarify top level", err.Error())
-		return err
+		return 0, err
 	}
 
 	countingWriter.GetCount()
 
 	println("wrote so many entries in xxArr: ", len(xxArr))
 	if err := cm.serializeHashIndex(xxArr, archvDir + "/" + version + ".idx"); err != nil {
-		return fmt.Errorf("serialize hash index: %w", err)
+		return 0, fmt.Errorf("serialize hash index: %w", err)
 	}
 
 
 	if err := wrt.Close(); err != nil {
-		return fmt.Errorf("close tar writer: %w", err)
+		return 0, fmt.Errorf("close tar writer: %w", err)
 	}
 	if err := writer.Close(); err != nil {
-		return fmt.Errorf("close archive writer: %w", err)
+		return 0, fmt.Errorf("close archive writer: %w", err)
 	}
 
 	println("left tarify")
-	return nil
+	return countingWriter.GetCount(), nil
 }
 
 

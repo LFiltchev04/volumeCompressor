@@ -9,7 +9,7 @@ import (
 
 
 //this is a metadata only operation for making an already existing image visible to the file server for pulling 
-func (cm* CephMount) WriteToLayers(repoName string, tagName string, hash string) error {
+func (cm* CephMount) WriteToLayers(repoName string, hash string) error {
 
 	dgst, err := digest.Parse(hash)
 	if err != nil {
