@@ -14,9 +14,13 @@ import (
 func AddLayer(repoName string, tagName string, volPath string, hash string, size int64, oldMfest ocispec.Manifest) (ocispec.Manifest,error) {
 
 
-
+	dgst, err := digest.Parse(hash)
+	if err != nil {
+		println("parse digest err: ", err.Error())
+		return oldMfest, err
+	}
 	oldMfest.Layers = append(oldMfest.Layers, ocispec.Descriptor{
-		Digest: digest.FromString(hash),
+		Digest: dgst,
 		Size: size,
 		Annotations: map[string]string{
 			"io.containerd/snapshot/hash/": hash,

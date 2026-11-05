@@ -1,0 +1,5 @@
+[global]
+    mon_host = 192.168.1.40:3300
+
+[client.kubernetes-csi]
+    key = AQCW82hp57/rJhAAXn3+QChDmU4JaodAFGlP9Q==
