@@ -44,7 +44,10 @@ func (cm *CephMount) AddDiffAiDi(oldMfest *ocispec.Manifest, diffId string, repo
 		return "", fmt.Errorf("failed to unmarshal config JSON: %w", err)
 	}
 	
-	dgst := digest.FromString(diffId)
+	dgst, err := digest.Parse(diffId)
+	if err != nil {
+		return "", err
+	}
 	imgConf.RootFS.DiffIDs = append(imgConf.RootFS.DiffIDs, dgst)
 
 	jsonBytes, err := json.Marshal(imgConf)
@@ -94,7 +97,9 @@ func (cm *CephMount) AddDiffAiDi(oldMfest *ocispec.Manifest, diffId string, repo
 	file.Close()
 	
 	
+	//how wonderful, theese fail silently and leave nonexistend paths around without a single care in the world
 	lyrLink := layerLinkPathSpec{
+		name: repoName,
 		digest: oldMfest.Config.Digest,
 	}
 	rPath, err = PathFor(lyrLink)

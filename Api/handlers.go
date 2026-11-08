@@ -93,7 +93,7 @@ func doSnapshot(resp http.ResponseWriter, req *http.Request) {
 	var mntWrap CephStorage.CephMount
 	mntWrap.CephMount = &globalConf
 
-	sz, err := mntWrap.CompressSubvolume(postedData.VolumePath, postedData.Version)
+	sz, err := mntWrap.CompressSubvolume(postedData.VolumePath, postedData.NewVersion)
 	if err != nil {
 		println("compress err: ", err.Error())
 		http.Error(resp, err.Error(), http.StatusInternalServerError)

@@ -24,8 +24,9 @@ func AddLayer(repoName string, tagName string, volPath string, hash string, size
 		Digest: dgst,
 		Size: size,
 		Annotations: map[string]string{
-			"io.containerd/snapshot/hash/": hash,
-			"io.containerd/snapshot/version/": tagName,
+			"containerd.io/snapshot/hash/": hash,
+			"containerd.io/snapshot/version/": tagName,
+			"containerd.io/uncompressed": hash,
 		},
 	})
 
@@ -34,7 +35,7 @@ func AddLayer(repoName string, tagName string, volPath string, hash string, size
 		oldMfest.Annotations = map[string]string{}
 	}
 	
-	oldMfest.Annotations["io.containerd/snapshot/envVolPath/"] = volPath
+	oldMfest.Annotations["containerd.io/snapshot.envVolPath"] = volPath
 
 	return oldMfest,nil
 
