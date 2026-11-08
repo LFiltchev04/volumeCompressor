@@ -19,23 +19,29 @@ func AddLayer(repoName string, tagName string, volPath string, hash string, size
 		println("parse digest err: ", err.Error())
 		return oldMfest, err
 	}
+
+	//get the last layer as is and check if it has unpack annotations 
+	lastLayer := oldMfest.Layers[len(oldMfest.Layers)-1]
+	_, exists:= lastLayer.Annotations["containerd.io/volPath"]
+	if exists {
+		println("last layer has volPath")
+		lastLayer.Annotations = map[string]string{} //wipes them
+	}
+
+
 	oldMfest.Layers = append(oldMfest.Layers, ocispec.Descriptor{
 		MediaType: "application/vnd.oci.image.layer.v1.tar",
 		Digest: dgst,
 		Size: size,
 		Annotations: map[string]string{
+			"containerd.io/snapshot/volPath/": volPath,
 			"containerd.io/snapshot/hash/": hash,
 			"containerd.io/snapshot/version/": tagName,
-			"containerd.io/uncompressed": hash,
 		},
 	})
 
 
-	if oldMfest.Annotations == nil {
-		oldMfest.Annotations = map[string]string{}
-	}
-	
-	oldMfest.Annotations["containerd.io/snapshot.envVolPath"] = volPath
+
 
 	return oldMfest,nil
 
