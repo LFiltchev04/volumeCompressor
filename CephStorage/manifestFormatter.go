@@ -33,6 +33,7 @@ func formatManifest(layerHashes []string)string{
 		intCastSize := (int64)(statStr.Size)
 
 		
+		
 		layers = append(layers, veeOne.Descriptor{
 			MediaType: veeOne.MediaTypeImageLayer,
 			Digest:    openconcept.Digest(hash),

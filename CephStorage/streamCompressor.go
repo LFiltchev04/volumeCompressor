@@ -14,7 +14,6 @@ import (
 	cephfs "github.com/ceph/go-ceph/cephfs"
 )
 
-var tempRootDir string
 
 type CephMount struct {
 	CephMount *cephfs.MountInfo
@@ -26,7 +25,7 @@ type Storage interface {
 }
 
 func (cm *CephMount) CephRead(path string) (io.ReadCloser, error) {
-	return cm.CephMount.Open(path, 0777, uint32(os.O_RDONLY))
+	return cm.CephMount.Open(path, os.O_RDONLY, 0)
 }
 
 func (cm *CephMount) CephWrite(path string) (io.WriteCloser, error) {
@@ -69,54 +68,56 @@ func tarTypeFlag(mode uint16) (byte, error) {
 	}
 }
 
-func (cm *CephMount) CompressSubvolume(subvolPath string, username string, dumpName string) error {
+func (cm *CephMount) CompressSubvolume(subvolPath string, version string) (uint64, error) {
 
 	archvDir := path.Join(subvolPath, "arch")
-	tarPath := path.Join(archvDir, dumpName)
 	errMd := cm.CephMount.MakeDir(archvDir, uint32(755))
 	if errMd != nil {
 		println("error on creating tarpath dir: ",archvDir,"with error: ", errMd.Error())
 	}
 
-	f, err:= cm.CephMount.Open(tarPath, os.O_CREATE, 0644)
+	f, err:= cm.CephMount.Open(archvDir+"/"+version+".tar", os.O_CREATE, 0644)
 	if err != nil {
 		println("error opening tar file: ", err.Error())
-		return err
+		return 0, err
 	}
 	f.Close()
-	writer, errWrite := cm.CephWrite(tarPath)
+	writer, errWrite := cm.CephWrite(archvDir+"/"+version+".tar")
 	var countingWriter = countingWriter{writer: writer, c: 0}
 
 	println("In compress, values are: ", subvolPath)
 	if errWrite != nil {
 		println("cephWrite error: ", errWrite.Error())
-		return errors.New("Assigning a write object for the compressor failed")
+		return 0, errors.New("Assigning a write object for the compressor failed")
 	}
 	println("entered tarify?")
 
 	wrt := tar.NewWriter(&countingWriter)
 
+	//slow call, takes a lot of time
 	xxArr, err := cm.tarifyBfs(subvolPath, wrt, &countingWriter)
 	if err != nil {
 		println("Error in tarify top level", err.Error())
-		return err
+		return 0, err
 	}
 
+	countingWriter.GetCount()
+
 	println("wrote so many entries in xxArr: ", len(xxArr))
-	if err := cm.serializeHashIndex(xxArr, archvDir + "/archive.trash"); err != nil {
-		return fmt.Errorf("serialize hash index: %w", err)
+	if err := cm.serializeHashIndex(xxArr, archvDir + "/" + version + ".idx"); err != nil {
+		return 0, fmt.Errorf("serialize hash index: %w", err)
 	}
 
 
 	if err := wrt.Close(); err != nil {
-		return fmt.Errorf("close tar writer: %w", err)
+		return 0, fmt.Errorf("close tar writer: %w", err)
 	}
 	if err := writer.Close(); err != nil {
-		return fmt.Errorf("close archive writer: %w", err)
+		return 0, fmt.Errorf("close archive writer: %w", err)
 	}
 
 	println("left tarify")
-	return nil
+	return countingWriter.GetCount(), nil
 }
 
 

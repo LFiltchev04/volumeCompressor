@@ -5,12 +5,15 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
+
+	"github.com/ceph/go-ceph/cephfs"
 
 	"github.com/gorilla/mux"
 
 	"compressor/CephStorage"
 	"compressor/Configuration"
-	help "compressor/Helpers"
+	//help "compressor/Helpers"
 )
 
 func doTest(resp http.ResponseWriter, req *http.Request){
@@ -55,6 +58,11 @@ func doTest(resp http.ResponseWriter, req *http.Request){
 }
 
 
+
+
+
+
+
 func doSnapshot(resp http.ResponseWriter, req *http.Request) {
 	bdyByts, err := io.ReadAll(req.Body)
 	if err != nil {
@@ -66,11 +74,13 @@ func doSnapshot(resp http.ResponseWriter, req *http.Request) {
 		resp.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-///IMPORTANT!!!!!!
+	
+	///IMPORTANT!!!!!!
 	type postBody struct {
-		DumpName string `json:"DumpName"` 
-		EnvName string `json:"EnvName"`
-		VolumePath string `json:"VolumePath"`
+		RepoName string `json:"repoName"`
+		Version string `json:"version"`
+		NewVersion string `json:"newVersion"`
+		VolumePath string `json:"volumePath"`
 	}
 
 	var postedData postBody
@@ -83,19 +93,103 @@ func doSnapshot(resp http.ResponseWriter, req *http.Request) {
 	var mntWrap CephStorage.CephMount
 	mntWrap.CephMount = &globalConf
 
-	mntWrap.CompressSubvolume(postedData.VolumePath, postedData.EnvName, postedData.DumpName)
-	VolumePath := postedData.VolumePath
-	DumpName := postedData.DumpName
+	sz, err := mntWrap.CompressSubvolume(postedData.VolumePath, postedData.NewVersion)
+	if err != nil {
+		println("compress err: ", err.Error())
+		http.Error(resp, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	szc := int64(sz)
+
+	VolumePath := postedData.VolumePath	
+	
+	//hardlinks it from the PV into the redable directory
+	hash, err := mntWrap.HardlinkBlob(VolumePath + "/arch/" + postedData.Version + ".tar", postedData.RepoName)
+	if err != nil {
+		println("hardlink err: ", err.Error())
+		http.Error(resp, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	println("hash is: ", hash)
+
+	//_, err = mntWrap.HardlinkBlob(VolumePath + "/arch/" + postedData.NewVersion + ".idx", postedData.RepoName)
+	//if err != nil {
+	//	println("hardlink err for idx file: ", err.Error())
+	//	http.Error(resp, err.Error(), http.StatusInternalServerError)
+	//	return
+	//}
+
+	//adds a new manifest tapped to the repo name
+
+	println("\n\n\n\nopening mfest\n\n\n\n")
+	mFestOld, err := mntWrap.LoadManifest(postedData.RepoName, postedData.Version)
+	if err != nil {
+		println("load manifest err: ", err.Error())
+		http.Error(resp, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	println("\n\n\n\nadding layer\n\n\n\n")
+	//gotta pull the size out too
+	mFestNew, err := CephStorage.AddLayer(postedData.RepoName, postedData.Version, postedData.VolumePath, hash, szc, *mFestOld)
+	if err != nil {
+		println("add layer err: ", err.Error())
+		http.Error(resp, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	println("\n\n\n  Writing the DiffIDs \n\n\n")
+
+	newDiffLyr, err := mntWrap.AddDiffAiDi(&mFestNew, hash, postedData.RepoName)
+	if err != nil {
+		println("diff err: ", err.Error())
+		http.Error(resp, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	println("new diff: ", newDiffLyr)
+
+	println("\n\n\n\nwriting to layers\n\n\n\n")
+	err = mntWrap.WriteToLayers(postedData.RepoName, hash)
+	if err != nil {
+		println("write to layers err: ", err.Error())
+		http.Error(resp, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	byteCast, err := json.Marshal(mFestNew)
+	if err != nil {
+		println("marshal err: ", err.Error())
+		http.Error(resp, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	println("\n\n\n\nwriting blobs\n\n\n\n")
+	mHash, err := mntWrap.WriteBlob(byteCast, postedData.RepoName, postedData.NewVersion)
+	if err != nil {
+		println("write blob err: ", err.Error())
+		http.Error(resp, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 
-	//for now i am assuming that the path is right, will see
-	
-	
-	mntWrap.HardlinkBlob(VolumePath + "/arch/" + DumpName, DumpName, postedData.EnvName)
+
+
+
+
+	//have to write the tag
+	err = mntWrap.WriteNewTag(postedData.NewVersion, postedData.RepoName, mHash)
+	if err != nil {
+		println("write new tag err: ", err.Error())
+	}
 
 	resp.WriteHeader(http.StatusOK)
 	_, _ = resp.Write([]byte("ok"))
 }
+
+
+
+
+
 
 func doHealthz(resp http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
@@ -163,11 +257,12 @@ func doDistribution(resp http.ResponseWriter, req *http.Request){
 
 	var cMnt CephStorage.CephMount
 	cMnt.CephMount = &Configuration.Global.GlobalMnt
-	cMnt.HardlinkBlob(rawBlobPath, rawBlobPath, jsonInstance.Username)
+	cMnt.HardlinkBlob(rawBlobPath, jsonInstance.VolumePath)
 
 }
 
 
+/*
 func doManifestOnly(resp http.ResponseWriter, req *http.Request){
 	reqBody, err := io.ReadAll(req.Body)
 	if err != nil {
@@ -220,4 +315,67 @@ func doManifestOnly(resp http.ResponseWriter, req *http.Request){
 	}
 
 	resp.WriteHeader(200)
+}
+
+*/
+
+type indexeReq struct {
+	RepoName string `json:"repoName"`
+	TagVersion string `json:"tagVersion"`
+
+}
+//fetches the index blobs for a repo
+func doGetIndexList(resp http.ResponseWriter, req *http.Request){
+	index := indexeReq{}
+	json.NewDecoder(req.Body).Decode(&index)
+	println("repo: ", index.RepoName)
+	
+
+}
+
+
+type indexBlobReq struct {
+	RepoName string `json:"repoName"`
+	BlobID string `json:"blobID"`
+}
+func doGetIndexBlob(resp http.ResponseWriter, req *http.Request){
+	reqBody, _ := io.ReadAll(req.Body)
+	var jsonInstance indexBlobReq
+	json.Unmarshal(reqBody, &jsonInstance)
+	println("blob: ", jsonInstance.BlobID)
+
+
+	globalConf := Configuration.Global.GlobalMnt
+	var mntWrap CephStorage.CephMount
+	mntWrap.CephMount = &globalConf
+
+	symlinkPath, err := mntWrap.GetBlobIndex(jsonInstance.RepoName, jsonInstance.BlobID)
+	if err != nil {
+		println("Error: ", err.Error())
+		resp.WriteHeader(500)
+		return
+	}
+	println("symlink: ", symlinkPath)
+
+
+	reader, err := mntWrap.CephRead(symlinkPath)
+	if err != nil {
+		resp.WriteHeader(500)
+		return
+	}
+	defer reader.Close()
+
+	// Statx follows the symlink (no AtSymlinkNofollow), so this is the real file's size
+	stat, err := mntWrap.CephMount.Statx(symlinkPath, cephfs.StatxSize, 0)
+	if err != nil {
+		resp.WriteHeader(500)
+		return
+	}
+	endfileSize := int64(stat.Size)
+
+	resp.Header().Set("Content-Type", "application/octet-stream")
+	resp.Header().Set("Content-Length", strconv.FormatInt(endfileSize, 10))
+	resp.WriteHeader(200)
+	io.Copy(resp, reader)
+
 }
