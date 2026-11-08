@@ -20,6 +20,7 @@ func AddLayer(repoName string, tagName string, volPath string, hash string, size
 		return oldMfest, err
 	}
 	oldMfest.Layers = append(oldMfest.Layers, ocispec.Descriptor{
+		MediaType: "application/vnd.oci.image.layer.v1.tar",
 		Digest: dgst,
 		Size: size,
 		Annotations: map[string]string{

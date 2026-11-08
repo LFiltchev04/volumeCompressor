@@ -21,6 +21,7 @@ func (ic *InformerConfig) SetupInformer(url string, kubeconfig string) error {
 
 	config, err := clientcmd.BuildConfigFromFlags(url, kubeconfig)
 	if err != nil {
+		println("err building config", err.Error())
 		log.Fatal(err)
 	}
 
@@ -78,7 +79,6 @@ func (c *GlobalConfig) InitConfig(pathToConf string) error {
 	err = glbMnt.ReadConfigFile("/etc/ceph/ceph.conf")
 	if err != nil {
 		println("err reading config", err.Error())
-		panic(err)
 	}
 
 	err = glbMnt.SetConfigOption("keyring", "/etc/ceph/ceph.client.kubernetes-csi.keyring")

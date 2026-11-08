@@ -138,6 +138,16 @@ func doSnapshot(resp http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	println("\n\n\n  Writing the DiffIDs \n\n\n")
+
+	newDiffLyr, err := mntWrap.AddDiffAiDi(&mFestNew, hash, postedData.RepoName)
+	if err != nil {
+		println("diff err: ", err.Error())
+		http.Error(resp, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	println("new diff: ", newDiffLyr)
+
 	println("\n\n\n\nwriting to layers\n\n\n\n")
 	err = mntWrap.WriteToLayers(postedData.RepoName, hash)
 	if err != nil {
@@ -160,6 +170,10 @@ func doSnapshot(resp http.ResponseWriter, req *http.Request) {
 		http.Error(resp, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+
+
+
 
 
 	//have to write the tag

@@ -3,6 +3,7 @@ package CephStorage
 import (
 	cnfg "compressor/Configuration"
 	"os"
+	"path"
 	digest "github.com/opencontainers/go-digest"
 )
 
@@ -28,6 +29,7 @@ func (cm* CephMount) WriteToLayers(repoName string, hash string) error {
 	}
 
 	rLyrPath := cnfg.Global.BaseConf.DistributionPV + layerWriter
+	cm.ensureDir(path.Dir(rLyrPath))
 
 	file, err := cm.CephMount.Open(rLyrPath, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 644)
 	if err != nil {
@@ -36,7 +38,7 @@ func (cm* CephMount) WriteToLayers(repoName string, hash string) error {
 	}
 
 
-	println("Writing to layer")
+	println("Writing to layer at path", rLyrPath)
 	file.Write([]byte(dgst.String()))
 	file.Close()
 
