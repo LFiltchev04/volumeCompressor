@@ -7,12 +7,13 @@ import (
 
 func Listener() {
 	mux := http.NewServeMux()
+	//normal fs manipulation section routes
 	mux.HandleFunc("/test", doTest)
-	mux.HandleFunc("POST /snapshotState", doSnapshot)
+	mux.HandleFunc("POST /snapshotState", doSnapshot) //makes a new tag of an already existing environment
 	mux.HandleFunc("POST /repoPush", doDistribution)
 
 	//the K8s stuff is here
-	mux.HandleFunc("POST /createEnv", doCreateEnv)
+	mux.HandleFunc("POST /createEnv", doCreateEnv) //makes a new environment from an existing base
 	//mux.HandleFunc("POST /deleteEnv", doDeleteEnv)
 
 	mux.HandleFunc("GET /repoIndexBlobs", doGetIndexList)

@@ -43,6 +43,7 @@ func doCreateEnv(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var pvPath string
 	if result {
 		log.Println("ns exists")
 
@@ -50,12 +51,15 @@ func doCreateEnv(w http.ResponseWriter, r *http.Request) {
 		log.Println("ns not exists")
 		//creates ns
 
-		err := c.Global.InformConfig.CreateNamespace(req.EnvName)
+		pvPath, err = c.Global.InformConfig.CreateNamespace(req.EnvName)
 		if err != nil {
-			http.Error(w, "create ns failed", 500)
+			http.Error(w, "create ns failed with err "+err.Error(), 500)
 			return
 		}
 	}
+
+
+	
 
 	log.Println("Created k8s resources, distribution backend management to be done here")
 
@@ -64,12 +68,12 @@ func doCreateEnv(w http.ResponseWriter, r *http.Request) {
 	var mntWrap s.CephMount
 	mntWrap.CephMount = &globalConf
 
-	err = mntWrap.MakeRepo(req.EnvName, req.BaseImage, req.BaseTag)
+	err = mntWrap.MakeRepo(req.EnvName, req.BaseImage, req.BaseTag, pvPath)
 	if err != nil {
 		http.Error(w, "repo creation failed", 500)
 		log.Printf("Function exited with error: %s\n", err.Error())
 		return
 	}
 
-	http.Error(w, "done", 200) //is OK, proceed
+	http.Error(w, pvPath, 200) //is OK, proceed
 }

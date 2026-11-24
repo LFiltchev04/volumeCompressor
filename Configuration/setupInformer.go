@@ -3,6 +3,7 @@ package Configuration
 import (
 	"context"
 	"log"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -51,7 +52,7 @@ func (ic *InformerConfig) NamespaceExists(ns string) (bool, error) {
 	return flag, nil
 }
 
-func (ic *InformerConfig) CreateNamespace(ns string) error {
+func (ic *InformerConfig) CreateNamespace(ns string) (string, error) {
 	ctx := context.TODO()
 
 	//creates NS
@@ -60,7 +61,7 @@ func (ic *InformerConfig) CreateNamespace(ns string) error {
 		if apierrors.IsAlreadyExists(err) {
 		}else{
 			log.Println("err creating ns: ", err)
-			return err
+			return "", err
 		}
 
 	}
@@ -95,14 +96,14 @@ func (ic *InformerConfig) CreateNamespace(ns string) error {
 	if err != nil {
 
 		if apierrors.IsAlreadyExists(err) {
-			return nil
+			return "", nil
 		}
 
 		log.Println("err creating svc: ", err)
-		return err
+		return "", err
 	}
 
-
+	println("Created svc")
 
 	//allocates the PVC from the ceph, storageclass is assumed
 
@@ -122,10 +123,33 @@ func (ic *InformerConfig) CreateNamespace(ns string) error {
 		},
 	}
 
+	log.Println("Creating PVC")
 	_, err = ic.ClientSet.CoreV1().PersistentVolumeClaims(ns).Create(ctx, &pvc, metav1.CreateOptions{})
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	return nil
+	
+
+	//ugly busy poll, will change
+	var pvcR *corev1.PersistentVolumeClaim
+	for range(20) {
+		pvcR, _ = ic.ClientSet.CoreV1().PersistentVolumeClaims(ns).Get(ctx, ns, metav1.GetOptions{})
+		if pvcR.Status.Phase == corev1.ClaimBound {
+			log.Println("PVC bound")
+			break
+		}
+		time.Sleep(time.Second * 2)
+	}
+
+	log.Println("PVC made: ", pvcR.String())
+
+
+	log.Println("PV check done")
+
+	log.Println("VolumeName: ", pvcR.Spec.VolumeName)
+
+	pv, _ := ic.ClientSet.CoreV1().PersistentVolumes().Get(ctx, pvcR.Spec.VolumeName, metav1.GetOptions{})
+	
+	return pv.Spec.CSI.VolumeAttributes["subvolumePath"], nil
 }

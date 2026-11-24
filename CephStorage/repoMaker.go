@@ -15,7 +15,7 @@ import (
 )
 
 // needs to have an already existing base image
-func (cm *CephMount) MakeRepo(name string, baseImage string, tagName string) error {
+func (cm *CephMount) MakeRepo(name string, baseImage string, tagName string, pvPath string) error {
 	pvBase := Config.Global.BaseConf.DistributionPV
 
 	//get the base image and parse it
@@ -86,6 +86,7 @@ func (cm *CephMount) MakeRepo(name string, baseImage string, tagName string) err
 	}
 	buffer.ReadFrom(rdr)
 
+	//loads the new one to insert the PV path as last place entry
 	mFest := ocispec.Manifest{}
 	err = json.Unmarshal(buffer.Bytes(), &mFest)
 	if err != nil {
@@ -93,6 +94,18 @@ func (cm *CephMount) MakeRepo(name string, baseImage string, tagName string) err
 		return err
 	}
 
+	tgtMap := mFest.Layers[len(mFest.Layers)-1].Annotations
+
+	if tgtMap != nil {
+		_, exists := tgtMap["containerd.io/snapshot/volPath/"]
+		if !exists {
+			tgtMap["containerd.io/snapshot/volPath/"] = pvPath
+		}
+	}
+
+	if tgtMap == nil {
+		mFest.Layers[len(mFest.Layers)-1].Annotations = map[string]string{"containerd.io/snapshot/volPath/": pvPath}
+	}
 	log.Println("Manifest loaded")
 
 	//this now appends the manifest to the new repo
