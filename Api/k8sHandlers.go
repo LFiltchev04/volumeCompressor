@@ -46,6 +46,8 @@ func doCreateEnv(w http.ResponseWriter, r *http.Request) {
 	var pvPath string
 	if result {
 		log.Println("ns exists")
+		pvPath, _ = c.Global.InformConfig.GetNsVolume(req.EnvName)
+
 
 	} else {
 		log.Println("ns not exists")
@@ -56,6 +58,7 @@ func doCreateEnv(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "create ns failed with err "+err.Error(), 500)
 			return
 		}
+
 	}
 
 

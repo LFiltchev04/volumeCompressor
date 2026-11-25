@@ -96,22 +96,59 @@ func (cm *CephMount) MakeRepo(name string, baseImage string, tagName string, pvP
 
 	tgtMap := mFest.Layers[len(mFest.Layers)-1].Annotations
 
-	if tgtMap != nil {
-		_, exists := tgtMap["containerd.io/snapshot/volPath/"]
-		if !exists {
-			tgtMap["containerd.io/snapshot/volPath/"] = pvPath
-		}
+	//that could maybe throw the snapshotter but IDC, the meta isnt used and i can pass garbage values so long as i forget to ditch it later
+	_, exists := tgtMap["containerd.io/snapshot/volPath/"]
+	if !exists {
+		println("volPath not set")
+		tgtMap["containerd.io/snapshot/volPath/"] = pvPath
 	}
 
-	if tgtMap == nil {
-		mFest.Layers[len(mFest.Layers)-1].Annotations = map[string]string{"containerd.io/snapshot/volPath/": pvPath}
-	}
+
+	mFest.Layers[len(mFest.Layers)-1].Annotations = map[string]string{"containerd.io/snapshot/volPath/": pvPath}
 	log.Println("Manifest loaded")
 
+	marshalledMfest, err := json.Marshal(mFest)
+	if err != nil {
+		log.Printf("json marshal failed %s", err.Error())
+		return err
+	}
+
+	newDgst := digest.FromBytes(marshalledMfest)
+	println("new digest is: ", newDgst.String())
+
+	//write the new manifest blob to Ceph storage
+	blobSpec := blobDataPathSpec{
+		digest: newDgst,
+	}
+	relPathBlob, err := PathFor(blobSpec)
+	if err != nil {
+		log.Printf("Failed to generate blob path: %s", err.Error())
+		return err
+	}
+	fullBlobPath := pvBase + relPathBlob
+	err = cm.CephMount.MakeDirs(path.Dir(fullBlobPath), 0766)
+	if err != nil {
+		log.Printf("Failed to make blob directory: %s", err.Error())
+		return err
+	}
+
+	file, err := cm.CephMount.Open(fullBlobPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		log.Printf("Failed to open blob file: %s", err.Error())
+		return err
+	}
+	defer file.Close()
+	
+	_, err = file.Write(marshalledMfest)
+	if err != nil {
+		log.Printf("Failed to write blob: %s", err.Error())
+		return err
+	}
+	log.Println("Wrote new manifest blob")
 	//this now appends the manifest to the new repo
 	newRepoPath := manifestRevisionLinkPathSpec{
 		name:     name,
-		revision: dgst,
+		revision: newDgst,
 	}
 	relPathNew, err := PathFor(newRepoPath)
 	if err != nil {
@@ -135,7 +172,7 @@ func (cm *CephMount) MakeRepo(name string, baseImage string, tagName string, pvP
 	}
 
 	log.Println("Wrote link")
-	_, err = wrtr.Write([]byte(dgst.String()))
+	_, err = wrtr.Write([]byte(newDgst.String()))
 	if err != nil {
 		return err
 	}
@@ -146,7 +183,7 @@ func (cm *CephMount) MakeRepo(name string, baseImage string, tagName string, pvP
 	tagElem := manifestTagIndexEntryPathSpec{
 		name:     name,
 		tag:      "v0",
-		revision: dgst,
+		revision: newDgst,
 	}
 
 	relPathTag, err := PathFor(tagElem)
@@ -162,7 +199,7 @@ func (cm *CephMount) MakeRepo(name string, baseImage string, tagName string, pvP
 		return err
 	}
 
-	file, err := cm.CephMount.Open(fullTagPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0766)
+	file, err = cm.CephMount.Open(fullTagPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0766)
 	if err != nil {
 		log.Printf("index open failed %s", err.Error())
 		return err
@@ -170,7 +207,7 @@ func (cm *CephMount) MakeRepo(name string, baseImage string, tagName string, pvP
 	defer file.Close()
 
 	//wrote to index
-	_, err = file.Write([]byte("sha256:" + manifestHash))
+	_, err = file.Write([]byte(newDgst.String()))
 	if err != nil {
 		log.Printf("index write failed %s", err.Error())
 		return err
@@ -194,7 +231,7 @@ func (cm *CephMount) MakeRepo(name string, baseImage string, tagName string, pvP
 	}
 
 	log.Println("Wrote current link")
-	_, err = file.Write([]byte("sha256:" + manifestHash))
+	_, err = file.Write([]byte(newDgst.String()))
 	if err != nil {
 		return err
 	}

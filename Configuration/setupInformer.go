@@ -12,31 +12,54 @@ import (
 
 )
 
+//small helper for PV dereference
+func (ic *InformerConfig) pullVolume(ns string, ctx context.Context) (string, error) {
+	
+	//ugly busy poll, will change
+	var pvcR *corev1.PersistentVolumeClaim
+	for range(20) {
+		pvcR, _ = ic.ClientSet.CoreV1().PersistentVolumeClaims(ns).Get(ctx, ns, metav1.GetOptions{})
+		if pvcR.Status.Phase == corev1.ClaimBound {
+			log.Println("PVC bound")
+			break
+		}
+		time.Sleep(time.Second * 2)
+	}
 
+	log.Println("PVC made: ", pvcR.String())
+
+
+	log.Println("PV check done")
+
+	log.Println("VolumeName: ", pvcR.Spec.VolumeName)
+
+	pv, _ := ic.ClientSet.CoreV1().PersistentVolumes().Get(ctx, pvcR.Spec.VolumeName, metav1.GetOptions{})
+	return pv.Spec.CSI.VolumeAttributes["subvolumePath"], nil
+}
 
 // verifies a namespace exists
 func (ic *InformerConfig) NamespaceExists(ns string) (bool, error) {
 
 	ctx := context.TODO()
 
-	var flag bool
-	flag = true
+	
 	//verifies namespace
 	_, err := ic.ClientSet.CoreV1().Namespaces().Get(ctx, ns, metav1.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			flag = true
+			return false, nil
 		}
-		return false, nil
+		
+		return false, err
 	}
 
 	//verifies headless service
 	_, err = ic.ClientSet.CoreV1().Services(ns).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			flag = false
+				return false, nil
 		}
-		return false, nil
+		return false, err
 	}
 
 
@@ -44,12 +67,12 @@ func (ic *InformerConfig) NamespaceExists(ns string) (bool, error) {
 	_, err = ic.ClientSet.CoreV1().PersistentVolumeClaims(ns).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			flag = false
+			return false, nil
 		}
-		return false, nil
+		return false, err
 	}
 
-	return flag, nil
+	return true, nil
 }
 
 func (ic *InformerConfig) CreateNamespace(ns string) (string, error) {
@@ -131,25 +154,19 @@ func (ic *InformerConfig) CreateNamespace(ns string) (string, error) {
 
 	
 
-	//ugly busy poll, will change
-	var pvcR *corev1.PersistentVolumeClaim
-	for range(20) {
-		pvcR, _ = ic.ClientSet.CoreV1().PersistentVolumeClaims(ns).Get(ctx, ns, metav1.GetOptions{})
-		if pvcR.Status.Phase == corev1.ClaimBound {
-			log.Println("PVC bound")
-			break
-		}
-		time.Sleep(time.Second * 2)
-	}
-
-	log.Println("PVC made: ", pvcR.String())
-
-
-	log.Println("PV check done")
-
-	log.Println("VolumeName: ", pvcR.Spec.VolumeName)
-
-	pv, _ := ic.ClientSet.CoreV1().PersistentVolumes().Get(ctx, pvcR.Spec.VolumeName, metav1.GetOptions{})
+	vol, _ := ic.pullVolume(ns, ctx)
 	
-	return pv.Spec.CSI.VolumeAttributes["subvolumePath"], nil
+
+
+	return vol, nil
+}
+
+
+func (ic *InformerConfig) GetNsVolume(ns string) (string, error) {
+
+
+	vol, _ := ic.pullVolume(ns, context.TODO())
+
+	log.Println("Got volume", vol)
+	return vol, nil
 }
