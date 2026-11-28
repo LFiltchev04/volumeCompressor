@@ -6,6 +6,8 @@ import (
 	"log"
 	"os"
 	"path"
+	"time"
+	"archive/tar"
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
@@ -94,18 +96,109 @@ func (cm *CephMount) MakeRepo(name string, baseImage string, tagName string, pvP
 		return err
 	}
 
-	tgtMap := mFest.Layers[len(mFest.Layers)-1].Annotations
+	//adds the jump link
+
+	linkfileData := "image jump from " + baseImage + "to " + name + "at time " + time.Now().String()
+
+	var buf bytes.Buffer
+
+	header := &tar.Header{
+		Name: "link",
+		Size: int64(len(linkfileData)),
+	}
+
+	tarWriter := tar.NewWriter(&buf)
+
+	tarWriter.WriteHeader(header)
+	tarWriter.Write([]byte(linkfileData))
+	tarWriter.Close()
+
+	jumplayerDgst := digest.FromBytes(buf.Bytes())
+
+	jumpBlobPth:= blobDataPathSpec{
+		digest: jumplayerDgst,
+	}
+	
+	pathJump, _ := PathFor(jumpBlobPth)
+	cm.ensureDir(path.Dir(pathJump))
+
+	jmpBlobFile, err := cm.CephMount.Open(pathJump, os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+
+	jmpBlobFile.Write(buf.Bytes())
+	jmpBlobFile.Close()
+
+	_, exists := mFest.Layers[len(mFest.Layers)-1].Annotations["containerd.io/snapshot/volPath/"]
+	if exists {
+		println("volPath not set")
+		mFest.Layers[len(mFest.Layers)-1].Annotations = map[string]string{}
+	}
+
+	mFest.Layers = append(mFest.Layers, ocispec.Descriptor{
+		MediaType: "application/vnd.oci.image.layer.v1.tar",
+		Digest: jumplayerDgst,
+		Size: int64(buf.Len()),
+	})
+
+	
+
+	//tgtMap := mFest.Layers[len(mFest.Layers)-1].Annotations
 
 	//that could maybe throw the snapshotter but IDC, the meta isnt used and i can pass garbage values so long as i forget to ditch it later
-	_, exists := tgtMap["containerd.io/snapshot/volPath/"]
-	if !exists {
-		println("volPath not set")
-		tgtMap["containerd.io/snapshot/volPath/"] = pvPath
-	}
+	
+
 
 
 	mFest.Layers[len(mFest.Layers)-1].Annotations = map[string]string{"containerd.io/snapshot/volPath/": pvPath}
 	log.Println("Manifest loaded")
+
+	//loads the existing config
+	confPath, _ := PathFor(blobDataPathSpec{digest: mFest.Config.Digest})
+	fullConfPath := pvBase + confPath
+	println("full conf path", fullConfPath)
+	file, err := cm.CephMount.Open(fullConfPath, os.O_RDONLY, 0644)
+	if err != nil {
+		log.Printf("Failed to open config: %s", err.Error())
+		return err
+	}
+	var img ocispec.Image
+	json.NewDecoder(file).Decode(&img)
+	file.Close()
+	println("config loaded")
+
+	img.RootFS.DiffIDs = append(img.RootFS.DiffIDs, jumplayerDgst)
+
+	confBytes, _ := json.Marshal(img)
+	newConfDgst := digest.FromBytes(confBytes)
+	log.Println("new config digest", newConfDgst)
+	mFest.Config.Digest = newConfDgst
+	mFest.Config.Size = int64(len(confBytes))
+
+	//writes the edited version
+
+	confPath, _ = PathFor(blobDataPathSpec{digest: newConfDgst})
+	fullConfPath = pvBase + confPath
+	println("full conf path", fullConfPath)
+
+	err = cm.ensureDir(path.Dir(fullConfPath))
+	if err != nil {
+		log.Printf("Failed to ensure config directory: %s", err.Error())
+		return err
+	}
+	newConfFile, err := cm.CephMount.Open(fullConfPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		log.Printf("Failed to open config file for writing: %s", err.Error())
+		return err
+	}
+	defer newConfFile.Close()
+	
+	_, err = newConfFile.Write(confBytes)
+	if err != nil {
+		log.Printf("Failed to write config blob: %s", err.Error())
+		return err
+	}
 
 	marshalledMfest, err := json.Marshal(mFest)
 	if err != nil {
@@ -132,7 +225,7 @@ func (cm *CephMount) MakeRepo(name string, baseImage string, tagName string, pvP
 		return err
 	}
 
-	file, err := cm.CephMount.Open(fullBlobPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	file, err = cm.CephMount.Open(fullBlobPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		log.Printf("Failed to open blob file: %s", err.Error())
 		return err
@@ -229,6 +322,7 @@ func (cm *CephMount) MakeRepo(name string, baseImage string, tagName string, pvP
 		log.Printf("current open failed %s", err.Error())
 		return err
 	}
+	defer file.Close()
 
 	log.Println("Wrote current link")
 	_, err = file.Write([]byte(newDgst.String()))
@@ -264,24 +358,41 @@ func (cm *CephMount) MakeRepo(name string, baseImage string, tagName string, pvP
 		if err != nil {
 			return err
 		}
+		defer file.Close()
 
 		_, err = file.Write([]byte(layer.Digest))
 		if err != nil {
 			return err
 		}
 		log.Println("Wrote layer: ", layer.Digest)
-		file.Close()
 	}
 
+	println("Writing last layer")
+
+	
+
+
+	println("Writing config")
 	//add the config json for good measure
 	confElem := layerLinkPathSpec{
 		name:   name,
 		digest: mFest.Config.Digest,
 	}
 	relPathConf, _ := PathFor(confElem)
-	cm.ensureDir(pvBase + relPathConf)
-	file, _ = cm.CephMount.Open(pvBase+relPathConf+"/link", os.O_CREATE|os.O_WRONLY, 0766)
-	file.Write([]byte(mFest.Config.Digest))
+	fullConfDir := pvBase + path.Dir(relPathConf)
+	cm.ensureDir(fullConfDir)
+	fullConfPath = fullConfDir + "/link"
+	file, err = cm.CephMount.Open(fullConfPath, os.O_CREATE|os.O_WRONLY, 0766)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	_, err = file.Write([]byte(mFest.Config.Digest))
+	if err != nil {
+		return err
+	}
+
+
 
 	//that is basically the whole thing?
 	return nil

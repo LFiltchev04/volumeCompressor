@@ -164,7 +164,7 @@ func doSnapshot(resp http.ResponseWriter, req *http.Request) {
 	}
 
 	println("\n\n\n\nwriting blobs\n\n\n\n")
-	mHash, err := mntWrap.WriteBlob(byteCast, postedData.RepoName, postedData.NewVersion)
+	mHash, err := mntWrap.WriteBlob(byteCast, postedData.RepoName)
 	if err != nil {
 		println("write blob err: ", err.Error())
 		http.Error(resp, err.Error(), http.StatusInternalServerError)
@@ -172,14 +172,11 @@ func doSnapshot(resp http.ResponseWriter, req *http.Request) {
 	}
 
 
-
-
-
-
 	//have to write the tag
 	err = mntWrap.WriteNewTag(postedData.NewVersion, postedData.RepoName, mHash)
 	if err != nil {
 		println("write new tag err: ", err.Error())
+		http.Error(resp, err.Error(), http.StatusInternalServerError)
 	}
 
 	resp.WriteHeader(http.StatusOK)

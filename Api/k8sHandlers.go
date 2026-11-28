@@ -60,9 +60,7 @@ func doCreateEnv(w http.ResponseWriter, r *http.Request) {
 		}
 
 	}
-
-
-	
+	log.Println("PV path is", pvPath)
 
 	log.Println("Created k8s resources, distribution backend management to be done here")
 

@@ -13,7 +13,7 @@ import (
 )
 
 //writes a blob entry and links it independently, not recomended to stream bulk data from here
-func (cm *CephMount) WriteBlob(data []byte, repoName string, newVersion string) (string, error) {
+func (cm *CephMount) WriteBlob(data []byte, repoName string) (string, error) {
 	basePath := Configuration.Global.BaseConf.DistributionPV
 	
 

@@ -34,9 +34,7 @@ func AddLayer(repoName string, tagName string, volPath string, hash string, size
 		Digest: dgst,
 		Size: size,
 		Annotations: map[string]string{
-			"containerd.io/snapshot/volPath/": volPath,
-			"containerd.io/snapshot/hash/": hash,
-			"containerd.io/snapshot/version/": tagName,
+			"containerd.io/snapshot/volPath": volPath,
 		},
 	})
 

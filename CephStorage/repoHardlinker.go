@@ -51,8 +51,7 @@ func (cm* CephMount)blobHasher(fileLocation string)(string, error){
 	return fmt.Sprintf("%x", byteDump), nil
 }
 
-// ensureDir avoids ceph_mkdirs (which blocks here) by stat-ing first and only
-// creating the components that are actually missing.
+// like mkdirs but checks first
 func (cm *CephMount) ensureDir(dir string) error {
 	if _, err := cm.CephMount.Statx(dir, cephfs.StatxMode, 0); err == nil {
 		println("dir already exists: ", dir)
